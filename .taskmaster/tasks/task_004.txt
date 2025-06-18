@@ -1,65 +1,43 @@
 # Task ID: 4
-# Title: Create Task File Generation System
-# Status: done
-# Dependencies: 1, 3
-# Priority: medium
-# Description: Implement the system for generating individual task files from the tasks.json data structure.
+# Title: Create Integration Manager and Event Hook System
+# Status: pending
+# Dependencies: 3
+# Priority: high
+# Description: Implement the plugin architecture foundation for handling integration events
 # Details:
-Build the task file generation system including:
-- Create task file templates
-- Implement generation of task files from tasks.json
-- Add bi-directional synchronization between task files and tasks.json
-- Implement proper file naming and organization
-- Handle updates to task files reflecting back to tasks.json
+Create an IntegrationManager class that can register integration plugins and emit events like 'taskCreated', 'taskUpdated', 'taskStatusChanged', 'taskRemoved'. Modify Taskmaster's core command handlers to emit these events after successful local operations. Design the system to be extensible for future integrations beyond Linear.
 
 # Test Strategy:
-Generate task files from sample tasks.json data and verify the content matches the expected format. Test synchronization by modifying task files and ensuring changes are reflected in tasks.json.
+Create unit tests for the IntegrationManager with mock integrations. Verify events are properly emitted and handled. Test that failed integration handlers don't break the main CLI flow.
 
 # Subtasks:
-## 1. Design Task File Template Structure [done]
+## 1. Design the IntegrationManager class architecture [pending]
 ### Dependencies: None
-### Description: Create the template structure for individual task files that will be generated from tasks.json. This includes defining the format with sections for task ID, title, status, dependencies, priority, description, details, test strategy, and subtasks. Implement a template engine or string formatting system that can populate these templates with task data. The template should follow the format specified in the PRD's Task File Format section.
+### Description: Create the foundational architecture for the IntegrationManager class that will serve as the central hub for managing plugins and integrations. Define class structure, interfaces, and core methods.
 ### Details:
+Design class hierarchy, define plugin interface contracts, establish initialization patterns, create plugin lifecycle management methods, and define configuration schema for plugin settings.
 
-
-## 2. Implement Task File Generation Logic [done]
+## 2. Implement event emitter system for task lifecycle events [pending]
 ### Dependencies: 4.1
-### Description: Develop the core functionality to generate individual task files from the tasks.json data structure. This includes reading the tasks.json file, iterating through each task, applying the template to each task's data, and writing the resulting content to appropriately named files in the tasks directory. Ensure proper error handling for file operations and data validation.
+### Description: Build a robust event emitter system that can handle task lifecycle events throughout the application. This system will allow plugins to listen to and respond to various task states.
 ### Details:
+Implement EventEmitter class with subscription/unsubscription methods, define standard task lifecycle events (created, started, completed, failed), add event filtering and priority handling, and ensure thread-safe event dispatching.
 
-
-## 3. Implement File Naming and Organization System [done]
-### Dependencies: 4.1
-### Description: Create a consistent system for naming and organizing task files. Implement a function that generates standardized filenames based on task IDs (e.g., task_001.txt for task ID 1). Design the directory structure for storing task files according to the PRD specification. Ensure the system handles task ID formatting consistently and prevents filename collisions.
+## 3. Create plugin registration mechanism [pending]
+### Dependencies: 4.1, 4.2
+### Description: Develop a secure and flexible plugin registration system that allows third-party plugins to register themselves with the IntegrationManager and declare their capabilities.
 ### Details:
+Implement plugin discovery and loading mechanisms, create plugin validation and security checks, establish plugin metadata schema, add dynamic plugin loading/unloading capabilities, and create plugin dependency resolution system.
 
-
-## 4. Implement Task File to JSON Synchronization [done]
-### Dependencies: 4.1, 4.3, 4.2
-### Description: Develop functionality to read modified task files and update the corresponding entries in tasks.json. This includes parsing the task file format, extracting structured data, validating the changes, and updating the tasks.json file accordingly. Ensure the system can handle concurrent modifications and resolve conflicts appropriately.
+## 4. Modify core commands to emit events [pending]
+### Dependencies: 4.2
+### Description: Update existing core command implementations to emit appropriate lifecycle events through the event system, enabling plugins to hook into command execution flows.
 ### Details:
+Identify all core commands that need event emission, add event emission calls at key execution points, ensure consistent event data structures across commands, implement event emission for error conditions, and maintain backward compatibility.
 
-
-## 5. Implement Change Detection and Update Handling [done]
-### Dependencies: 4.1, 4.3, 4.4, 4.2
-### Description: Create a system to detect changes in task files and tasks.json, and handle updates bidirectionally. This includes implementing file watching or comparison mechanisms, determining which version is newer, and applying changes in the appropriate direction. Ensure the system handles edge cases like deleted files, new tasks, and conflicting changes.
+## 5. Add error isolation for plugin failures [pending]
+### Dependencies: 4.1, 4.2, 4.3
+### Description: Implement comprehensive error isolation mechanisms to prevent plugin failures from affecting core system functionality or other plugins, ensuring system stability.
 ### Details:
-
-
-<info added on 2025-05-01T21:59:10.551Z>
-{
-  "id": 5,
-  "title": "Implement Change Detection and Update Handling",
-  "description": "Create a system to detect changes in task files and tasks.json, and handle updates bidirectionally. This includes implementing file watching or comparison mechanisms, determining which version is newer, and applying changes in the appropriate direction. Ensure the system handles edge cases like deleted files, new tasks, and conflicting changes.",
-  "status": "done",
-  "dependencies": [
-    1,
-    3,
-    4,
-    2
-  ],
-  "acceptanceCriteria": "- Detects changes in both task files and tasks.json\n- Determines which version is newer based on modification timestamps or content\n- Applies changes in the appropriate direction (file to JSON or JSON to file)\n- Handles edge cases like deleted files, new tasks, and renamed tasks\n- Provides options for manual conflict resolution when necessary\n- Maintains data integrity during the synchronization process\n- Includes a command to force synchronization in either direction\n- Logs all synchronization activities for troubleshooting\n\nEach of these subtasks addresses a specific component of the task file generation system, following a logical progression from template design to bidirectional synchronization. The dependencies ensure that prerequisites are completed before dependent work begins, and the acceptance criteria provide clear guidelines for verifying each subtask's completion.",
-  "details": "[2025-05-01 21:59:07] Adding another note via MCP test."
-}
-</info added on 2025-05-01T21:59:10.551Z>
+Create plugin sandboxing mechanisms, implement try-catch wrappers for plugin execution, add plugin health monitoring and automatic recovery, create error reporting and logging for plugin failures, and establish plugin quarantine procedures for repeated failures.
 

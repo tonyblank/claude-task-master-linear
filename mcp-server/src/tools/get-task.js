@@ -44,7 +44,11 @@ export function registerShowTaskTool(server) {
 		name: 'get_task',
 		description: 'Get detailed information about a specific task',
 		parameters: z.object({
-			id: z.string().describe('Task ID to get'),
+			id: z
+				.string()
+				.describe(
+					'Task ID(s) to get (can be comma-separated for multiple tasks)'
+				),
 			status: z
 				.string()
 				.optional()
@@ -61,13 +65,17 @@ export function registerShowTaskTool(server) {
 				),
 			projectRoot: z
 				.string()
-				.optional()
 				.describe(
-					'Absolute path to the project root directory (Optional, usually from session)'
+					'Absolute path to the project root directory. Must be an absolute path.'
 				)
 		}),
-		execute: withNormalizedProjectRoot(async (args, { log }) => {
+		execute: withNormalizedProjectRoot(async (args, { log, session }) => {
 			const { id, file, status, projectRoot } = args;
+
+			// Handle comma-separated IDs
+			const taskIds = id.includes(',')
+				? id.split(',').map((id) => id.trim())
+				: [id];
 
 			try {
 				log.info(
@@ -108,11 +116,12 @@ export function registerShowTaskTool(server) {
 						tasksJsonPath: tasksJsonPath,
 						reportPath: complexityReportPath,
 						// Pass other relevant args
-						id: id,
+						id: taskIds.length === 1 ? taskIds[0] : taskIds.join(','),
 						status: status,
 						projectRoot: projectRoot
 					},
-					log
+					log,
+					{ session }
 				);
 
 				if (result.success) {
@@ -126,7 +135,8 @@ export function registerShowTaskTool(server) {
 					result,
 					log,
 					'Error retrieving task details',
-					processTaskResponse
+					processTaskResponse,
+					projectRoot
 				);
 			} catch (error) {
 				log.error(`Error in get-task tool: ${error.message}\n${error.stack}`);

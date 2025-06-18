@@ -7,7 +7,8 @@ import { z } from 'zod';
 import {
 	handleApiResult,
 	createErrorResponse,
-	withNormalizedProjectRoot
+	withNormalizedProjectRoot,
+	processMCPResponseData
 } from './utils.js';
 import { updateTaskByIdDirect } from '../core/task-master-core.js';
 import { findTasksPath } from '../core/utils/path-utils.js';
@@ -34,6 +35,12 @@ export function registerUpdateTaskTool(server) {
 				.boolean()
 				.optional()
 				.describe('Use Perplexity AI for research-backed updates'),
+			append: z
+				.boolean()
+				.optional()
+				.describe(
+					'Append timestamped information to task details instead of full update'
+				),
 			file: z.string().optional().describe('Absolute path to the tasks file'),
 			projectRoot: z
 				.string()
@@ -67,6 +74,7 @@ export function registerUpdateTaskTool(server) {
 						id: args.id,
 						prompt: args.prompt,
 						research: args.research,
+						append: args.append,
 						projectRoot: args.projectRoot
 					},
 					log,
@@ -77,7 +85,13 @@ export function registerUpdateTaskTool(server) {
 				log.info(
 					`${toolName}: Direct function result: success=${result.success}`
 				);
-				return handleApiResult(result, log, 'Error updating task');
+				return handleApiResult(
+					result,
+					log,
+					'Error updating task',
+					processMCPResponseData,
+					args.projectRoot
+				);
 			} catch (error) {
 				log.error(
 					`Critical error in ${toolName} tool execute: ${error.message}`

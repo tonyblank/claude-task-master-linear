@@ -1,0 +1,907 @@
+# **PRD – Taskmaster to Linear Sync (Version 2\)**
+
+## **Overview**
+
+**Product Overview:** Taskmaster-to-Linear Sync is a feature integration that connects the Taskmaster CLI (a local AI-assisted task manager) with Linear (a cloud-based issue tracking system). This solution automatically mirrors all Taskmaster tasks and updates to Linear in real time . It targets **software developers** who plan and break down work locally using Taskmaster, and **product/team leads** who track progress in Linear. By bridging the developer’s private task list with the team’s shared Linear board, the feature eliminates duplicate data entry and keeps everyone aligned without changing the developer’s CLI-centric workflow .
+
+**Problem & Value:** Developers often maintain detailed to-do lists or subtasks locally (for example, using Taskmaster’s AI to generate subtasks), but project managers require visibility in a tool like Linear. Manually copying tasks between systems is tedious and error-prone. This integration ensures **transparency and real-time updates**: when a developer creates, completes, or modifies a task in Taskmaster, the corresponding Linear issue is created or updated automatically . This means the **source of truth remains the developer’s local tasks**, yet the broader team can see progress in Linear instantly. For example, if a developer breaks a feature into five subtasks in Taskmaster, those five items will immediately appear as issues in Linear . When the developer marks a task “done” locally, the Linear issue is closed automatically . Overall, the feature saves time, avoids omissions, and improves team coordination by **synchronizing personal planning with team project management**.
+
+**Scope:** Version 2 of this PRD finalizes a one-way **outbound sync** from Taskmaster to Linear (Phase 1 of integration) as a production-ready implementation. We use Linear’s official TypeScript API SDK with a **personal API key** for authentication . All Taskmaster operations – task creation, editing, completion, deletion, reordering, etc. – will trigger corresponding Linear updates (creating issues, updating fields, closing or archiving issues, etc.). The sync is intentionally **one-directional (Taskmaster → Linear)** for this phase ; Taskmaster remains the source of truth, and changes made directly in Linear will not automatically propagate back to the CLI (this limitation will be addressed in future phases). The integration is designed to be robust (non-blocking, with error handling for offline or API failures) and **configurable** to fit different team workflows (e.g. mapping Taskmaster statuses to custom Linear states, toggling which fields to sync) .
+
+**Goals:** Deliver a seamless user experience where developers barely notice the sync (apart from helpful confirmations), but managers gain full visibility. Ensure **data consistency** (no duplicate or missing issues), preserve Taskmaster’s performance (local operations remain fast, with network calls done asynchronously after local saves ), and provide configuration options to accommodate various Linear setups. Additionally, architect the solution in a modular way to enable future integrations (e.g. Jira, GitHub Issues) with minimal changes . The outcome of PRD v2 is a definitive specification such that engineering can immediately begin building the feature to production standards, with no ambiguity.
+
+## **Core Features**
+
+The Taskmaster-to-Linear sync encompasses several core features. Each feature is described with its functionality, importance, and high-level implementation approach:
+
+* **Real-Time Outbound Sync of Tasks:** Any time a developer creates a new task or subtask in Taskmaster, it is automatically created as an issue in Linear, and any updates (title, description, status changes, etc.) are immediately applied to the corresponding Linear issue . This feature ensures *team visibility*: product managers see up-to-date progress without developers needing to manually copy updates. **How it works:** After Taskmaster performs a local task operation (e.g. adding a task to tasks.json), the CLI invokes the Linear API (via the Linear SDK) to create or update the issue remotely . The system stores the Linear issue ID in the Taskmaster task data to maintain the link . For example, if a developer runs task-master add-task "Build login UI", Taskmaster will add the task locally then call Linear’s createIssue mutation to create an issue (including title, description, etc.) in the configured Linear team . The developer immediately sees a CLI confirmation like “✓ Task created (synced to Linear as ENG-47)” . If the Linear API call fails (e.g. no internet), the CLI warns “(Linear sync failed)” but does not interrupt the local operation , preserving the user’s flow (the sync can be retried later). This real-time sync applies to all CRUD actions: adding tasks, completing tasks (marks issue done), editing titles/descriptions, and removing tasks (archives the issue) – so Linear always reflects the latest Taskmaster state.
+
+* **Hierarchy & Subtask Mirroring:** Taskmaster’s nested subtasks are mirrored as Linear sub-issues (child issues) under parent issues . This feature preserves the project’s structure across both systems, which is important for clarity (subtasks remain grouped under their parent feature both locally and in Linear). **How it works:** When a subtask is added (via add-subtask or AI “expand” commands), the integration creates a Linear issue with a parentId linking it under the correct parent issue . For example, adding subtask “Implement OAuth callback” under task 5 will call Linear API to create an issue with parentId \= \[LinearID of task 5\] . Linear will show this issue nested under its parent (ENG-45 → ENG-50 as a sub-issue, for instance) . The CLI stores the new sub-issue’s ID in the subtask’s data and confirms to the user (e.g. “Added subtask 5.3 (Linear sub-issue ENG-50 under ENG-45)” ). If a Taskmaster task is *converted* into a subtask of another (re-parented), the integration will update the existing Linear issue’s parent relationship instead of creating a duplicate (using Linear’s updateIssue to set a new parentId). This way, moves in the hierarchy are reflected by moving the issue in Linear, preserving one-to-one mapping of tasks to issues. (Note: Tasks cannot be moved across different Linear teams; it’s assumed one Taskmaster project syncs to a single Linear team to avoid cross-team complications .) **Reordering** of tasks or subtasks (without changing parent) is mostly not synced in Phase 1 – Linear does not strictly maintain an order list, and implementing sync for purely visual reorder is complex. The tasks will appear in roughly creation order in Linear unless manually ordered there. We consider this acceptable for now . If needed, we may update the Linear issue titles to include the Taskmaster task number (e.g. “5.2 Implement X”) to convey ordering , but we will not attempt to automatically rearrange issues in Linear on every reorder operation (to avoid excessive API calls for minor reordering).
+
+* **Bidirectional Sync (Phase 1 Limitations):** *This is primarily an explanatory note rather than a feature of Phase 1\.* In this initial release, sync is **one-way** from Taskmaster to Linear . The integration **does not** pull changes made directly in Linear back into Taskmaster. This is by design to keep Phase 1 simple and developer-centric: the developer’s local Taskmaster usage is the authoritative source of truth, and Linear is a passive reflection . It’s important to set this expectation: if someone edits a Linear issue (e.g. a PM renames a task or marks it done in Linear), those edits will **not** appear in the CLI. In such cases, data could diverge (e.g. Linear shows an issue as “Done” while Taskmaster still shows it “pending”) . As a mitigation, we will note this in documentation and possibly provide a manual “sync/pull” command for advanced users to reconcile if needed . In general, we assume the developer will primarily use Taskmaster for changes, and any Linear-side updates by others are an edge case. (Future phases will introduce webhook or polling-based two-way sync to handle this, see **Development Roadmap**.) For now, this one-way outbound sync covers the core need (avoid manual dual entry) and keeps the system simpler and more robust .
+
+* **Task Field Mapping (Titles, Descriptions, Details):** Taskmaster tasks have rich information (title, description, details, test strategy, etc.), which needs to be propagated to Linear’s issue fields. By default, we map **title** to Linear issue title (one-to-one) , and we map the combination of Taskmaster’s *description*, *details*, and *testStrategy* fields into the Linear issue’s **description body** (which supports Markdown) . This is important to retain all context for the task – for example, if the task has additional acceptance criteria or testing notes, the team in Linear can see them. **How it works:** When creating or updating an issue, we concatenate Taskmaster fields into a single Markdown string. For example, the Linear description might be: “**Description:** Implement OAuth callback endpoint…\\n**Details:** Use Express route /auth/callback…\\n**Test Strategy:** Write unit tests for callback parsing.” (formatting them as bold section headings for clarity) . This way, nothing is lost in translation. Taskmaster doesn’t currently store rich text, but we can format strings for Linear. We also ensure that editing a task’s title or description via CLI triggers an update call to Linear so the issue stays up to date .
+
+* **Status and Workflow State Sync:** Taskmaster tasks have statuses (e.g. “pending”, “in-progress”, “review”, “done”, “deferred”, “cancelled”) to indicate their state. Linear issues have a **workflow state** (each team in Linear has a set of states like “Todo”, “In Progress”, “In Review”, “Done”, “Canceled”, etc., possibly with custom names). It is critical that when a developer marks a task as started or completed, the Linear issue moves to the corresponding state so that project managers see accurate progress . **How it works:** We implement a mapping between Taskmaster status values and Linear state IDs. For the default mapping, we will align as follows :
+
+  * **pending** → Linear “Todo” (or equivalent backlog/not started state).
+
+  * **in-progress** → Linear “In Progress” state.
+
+  * **review** → Linear “In Review” state (if the Linear team uses a separate state for code review; many do) .
+
+  * **(new)** **ready** (Taskmaster to add a “ready for merge” status) → Linear “Ready for Merge” state . *(If Taskmaster does not introduce a distinct “ready” status, then possibly the “review” status can be mapped to either In Review or Ready for Merge depending on team workflow. We prefer to support a distinct status to fully cover Linear’s default workflow, so adding “ready” in Taskmaster is under consideration in this PRD.)*
+
+  * **done** → Linear “Done” or completed state .
+
+  * **deferred** → no direct Linear state; we will likely leave the issue open but perhaps apply a “Deferred” label or simply not move it to Done . (Deferred could be treated as still “Todo” or a specific Linear state if one exists or using Linear’s “Canceled” with a label – see Config below.)
+
+  * **cancelled** → Linear “Canceled” state (if available) or we use Linear’s archive if the user removes the task (see Remove feature below).
+
+* The integration will retrieve the target Linear team’s actual state IDs for these (since each team’s states have unique IDs). On initialization or first sync, we query Linear for the team’s workflow states and store the relevant IDs (e.g. find the id for the “Done” state) . When the user runs task-master set-status 7 done, Taskmaster updates the local JSON, then calls Linear’s issueUpdate with stateId \= \<DoneStateID\> for that issue . The result is the Linear issue moves to the Done column, and the CLI prints confirmation (“Task 7 marked as done ✓ (Linear issue closed)” ). Similarly, setting status to “review” would use the In Review state’s ID. If any Linear state is not found (e.g. a team doesn’t use “In Review”), the config allows customizing or disabling that mapping. By default, we aim to support Linear’s common software workflow out-of-the-box . This feature is crucial for keeping status aligned; without it, a task done locally would still appear open in Linear, causing confusion.
+
+* **Priorities and Labels:** Taskmaster tasks have an optional **priority** field (“low”, “medium”, “high”) that highlights task importance. Linear issues also can have a priority property (if enabled) or one can use labels to indicate priority . Our integration will sync task priority to Linear so that critical tasks are marked accordingly. **How:** If Linear’s API supports a priority field (e.g. an enum of High/Medium/Low), we will map “high” → High priority, etc. . If not, we will apply a **Priority label** (e.g. label the issue as “Priority: High”) or potentially use issue ordering in Linear’s backlog to reflect it . We assume Linear’s GraphQL has a priority field we can set on issueCreate/issueUpdate (the SDK documentation indicates a Priority property exists) . This ensures that if a developer flags a task as high priority, it will be visually marked in Linear for the team’s awareness.
+
+   In addition to priority, we plan to leverage **Linear Labels** for other metadata:
+
+  * A **“Taskmaster” label** will be added to every issue created by this integration (by default). This helps anyone in Linear quickly filter or identify issues that originate from Taskmaster . It’s a minor feature but useful for transparency. The integration will check if a “Taskmaster” label exists in the Linear team; if not, it will create it during setup or first issue creation. This label application can be turned off via config if a user prefers not to tag issues (e.g. to blend them in) .
+
+  * **Language labels:** Many development tasks are language-specific (e.g. “Fix Python API bug” or “Update React component”). We propose an optional feature where Taskmaster can tag Linear issues with the programming language(s) involved in the task . This would allow filtering tasks in Linear by technology (e.g. all “Ruby” tasks). Implementation wise, detecting the language might be inferred from the task content (e.g. presence of code snippets or file extensions in descriptions) or even from repository context. For now, we might allow the user to specify a language for a task (not currently in Taskmaster’s CLI, so perhaps a future enhancement or derived from project language). As a default, we’ll design the system to support adding a language label if it can deduce one. We will use standardized language names and assign label colors that match common conventions (for example, a label “Python” colored Python-blue, “Ruby” colored Ruby-red, aligning with GitHub language colors) . This label feature is configurable: it can be enabled or disabled in the config file .
+
+  * **Category labels (Task Type):** We introduce the concept of task “category” or type – e.g. Feature, Bug, Chore, Documentation, Testing, etc. This is not a native concept in Taskmaster v1, but we can incorporate it as an optional field or infer it (for example, if a task title contains “fix” or came from a PRD’s bug list, we might mark it as Bug). For PRD v2, we plan to allow categorization so that Linear issues get a corresponding label like “Feature” or “Bug” . We will define a sensible default set of categories (e.g. Feature, Bug, Enhancement, Docs, Test, Research) – **Deep Research Default:** *Feature, Bug, Chore, Documentation, Testing, Research, Optimization* – and allow the user to configure or extend this list. The CLI might allow specifying a category when adding a task (or default based on context), and the integration ensures a label for that category exists in Linear (creating it if needed) and applies it to the issue. This again helps in Linear to filter or visually distinguish issue types. Like other labels, this is configurable (on/off and custom categories) .
+
+* The use of labels enriches the Linear side without cluttering the CLI. They are all optional features (enabled by default, but the user can disable any of them in config). By automatically creating needed labels in Linear during setup or first sync, we reduce manual setup for the user .
+
+* **Dependencies Sync:** Taskmaster supports task dependencies, where one task can depend on others (in the JSON, a task has a list of IDs it depends on). In Linear, there’s an **issue relation** feature to mark issues as blocked by or blocking others . We will mirror Taskmaster dependencies in Linear so that if Task B depends on Task A, Linear will show “Issue B is blocked by Issue A”. This gives project managers the same insight into task ordering. **How:** After creating tasks, the integration will call Linear’s API to create relations. Linear’s GraphQL has a mutation createIssueRelation(issueId: ID, relatedIssueId: ID, type: blocks) which can establish that relationship . Our convention: if Taskmaster task X has dependencies: \[Y, Z\], then in Linear we mark issue X as “blocked by” issues Y and Z (or equivalently, Y and Z “block” X). Implementation detail: because a dependency might refer to a task that gets created at the same time (especially in a bulk operation like parsing a PRD, tasks may have interdependencies), we cannot create the relation until both tasks have their Linear IDs . So the plan is: after a set of tasks is created and all Linear issues exist, we loop through tasks and for each dependency, call createIssueRelation accordingly . This might happen at the end of a multi-task command (like parse-prd) or immediately for a single add (if a user adds a dependency later via a hypothetical command, we’d add the relation then). We will guard against duplicates and only add relations that aren’t already present. If a dependency is removed in Taskmaster, we could likewise remove that relation in Linear (Linear’s API has deleteRelation). Dependency syncing ensures that Linear’s dependency graph (and any blocked issue indicators) match the Taskmaster plan, enhancing consistency.
+
+* **CLI Integration & Configuration Setup:** To use this feature, the developer must configure access to Linear. We provide a **simple setup flow** to gather needed info and store it. **What it does:** A new CLI command task-master sync-setup (or invoked automatically on first use of sync) will prompt the user for:
+
+  * **Linear API Key:** A personal API key which the user can create in their Linear account settings . This key is required for the CLI to authenticate with Linear’s API. We opted for a personal API token (as opposed to an OAuth flow) to keep things simple in a CLI context . The key is stored securely in the user’s environment (written to a local .env file) and not in plain text in any tracked config .
+
+  * **Linear Team ID:** The Linear “team” (project board) where issues should be created . Many Linear users have multiple teams (e.g. Engineering, Product); the tasks usually belong in one team. The setup can fetch the list of teams via API and let the user select one . We store the chosen team’s unique ID in Taskmaster’s config so we know where to create issues . The team selection is crucial because state mapping and issue numbering (e.g. ENG-123 vs MOB-4) depend on the team.
+
+  * **Linear Project (optional):** Optionally, the user can specify a Linear Project to associate all created issues with . If their work corresponds to a particular project in Linear (like “Q3 Roadmap” project), providing a project ID ensures all issues are grouped there. If left blank, issues go into the backlog without a project (which is fine) .
+
+  * **Sync Preferences:** Additional config toggles as discussed (e.g. whether to apply the Taskmaster label, language labels, etc., defaults are yes) , and possibly custom mapping overrides (advanced). The wizard can ask simple Y/N questions like “Label Linear issues with programming language? (Y/n)” and record the preferences.
+
+* After collecting this, the CLI stores the teamId (and projectId, flags, etc.) in Taskmaster’s config file (likely \~/.taskmaster/config.json or a project-local config) under a linear section . The API key is stored in .env as LINEAR\_API\_KEY=xyz to avoid putting secrets in JSON . The setup will also test the API key (e.g. fetch the user’s name or teams) to verify it works . Once done, the tool prints a success message and from then on, sync is active (we may set an autoSync=true flag in config) .
+
+   This feature is vital for developer experience (DX) – it makes enabling the integration straightforward. We will integrate it such that if the user forgets to run sync-setup, the first time they attempt a task operation that would sync, the CLI can detect no config and guide them (“Linear sync not configured. Run task-master sync-setup to get started.”) . We choose not to surprise-interactive-prompt during a random command, to avoid confusion; instead, a clear instruction or requiring the explicit command ensures the user is prepared to input credentials . We will also support **headless configuration** for advanced use cases: if the environment variable and config JSON are already set (e.g. user scripted it or uses CI), the wizard can be skipped . This means the tool should recognize if LINEAR\_API\_KEY is present and config.json has teamId, then assume sync is configured and not prompt. All of this lowers friction for adoption.
+
+* **Robust Error Handling & Offline Support:** The sync feature is designed not to disrupt the developer’s workflow even if Linear is unreachable. All sync operations occur *after* the local task operation succeeds, and run in a try/catch that handles exceptions gracefully . If the Linear API call fails (due to no internet, API downtime, invalid config, etc.), the CLI will **log an error message** but will **not crash or roll back the local change** . For example, if add-task succeeds locally but Linear is down, the CLI might output “Task added locally, but Linear sync failed: . You can retry syncing this task later.” . The error message will be concise and non-intrusive, indicating the issue but not spamming the user every time (perhaps we show it once per session or per task) . We avoid showing sensitive info (we won’t dump the API key or full stack trace, just a friendly error) . Additionally, if sync is not configured, we’ll generally operate silently (no nagging on every command, just maybe a reminder once) . The CLI could also queue unsynced tasks – for instance, if Linear is unreachable, we mark that task in memory as “pending sync”. We plan to provide a command like task-master sync-pending to retry sending any tasks that failed to sync initially . This is especially useful for scenarios like working on a plane with no internet: a developer might add 10 tasks; the CLI can’t reach Linear, so it logs those failures. Later, they can run sync-pending once online, which will scan for any tasks missing a linearIssueId and create them . This ensures no work is lost or permanently unsynced. Internally, our design of storing the linearIssueId in tasks.json is key for idempotency – if a task has an ID, we know it’s synced; if not, we can attempt to create it. We will always check before creating an issue that the task doesn’t already have a Linear ID, preventing duplicate issues . In summary, this feature ensures the integration is non-blocking and resilient: local operations always succeed regardless of network status, and the user can catch up the sync later without data inconsistency.
+
+* **Task Deletion & Archival:** When a developer removes a task in Taskmaster (remove-task or remove-subtask), the corresponding Linear issue should be removed from the active board as well (to avoid orphan open issues) . However, to preserve history, we won’t outright delete the Linear issue (Linear doesn’t truly delete issues; it archives them). **How it works:** Upon local deletion, after updating tasks.json and deleting the local task file, the CLI will call archiveIssue (via SDK or GraphQL) for the Linear issue ID . Archiving in Linear essentially closes the issue and hides it from normal views (akin to deletion) . The CLI then prints confirmation like “Task 7 deleted (Linear issue archived)” . If the Linear call fails, we again just warn and the user may need to manually archive it later . This feature is important to maintain consistency – if a task is cancelled or deemed unnecessary, we don’t want it still appearing as open work in Linear. We map Taskmaster’s cancelled status similarly: if a user marks a task as cancelled (rather than fully removing it), we could also archive or move the issue to a “Canceled” state in Linear . In Linear, typically “Canceled” is a terminal state or they archive issues; we will use whichever is appropriate (if Linear team has a Canceled state, use that; if not, archiving is fine). Essentially, any task that is no longer active in Taskmaster will not clutter Linear.
+
+* **Git Branch Name Sync:** *(New in Additional Requirements)* Linear’s GitHub integration often generates a suggested branch name for each issue (e.g. proj-123-some-feature) that developers use when creating feature branches. As part of our one-way sync, when we create a Linear issue, we can retrieve this **branch name** and record it back in the Taskmaster task. This allows the developer to easily know the canonical branch name to use for commits, and opens the door for future automations (like auto-creating branches). **How it works:** The Linear API’s Issue object includes a branchName field (the suggested branch name) . After creating an issue, we will capture the returned branchName and store it in the Taskmaster task structure (introducing a new field, e.g. branchName) . For example, after calling createIssue, the integration might log something like: Linear returned branch name “proj-47-implement-oauth”. We then update the local task’s data: "branchName": "proj-47-implement-oauth". We will also include this in any **audit/sync commands** – e.g. a sync-all could fetch the latest branch names for all tasks from Linear to update any that might have changed (Linear can allow customizing branch naming scheme) . This feature ensures that Taskmaster doesn’t just push data out but also pulls a tiny bit of relevant info in. It’s still one-way (we’re not updating any task content from Linear except this non-editable metadata). In the Taskmaster CLI, we might expose the branch name to the user. For instance, we could enhance task-master list to show the branch name next to tasks (optional verbose mode). Even if not exposed in CLI output initially, having it stored means we could later have a command like task-master start task 7 that uses the branch name to auto-create or checkout a git branch (future integration). In Phase 1, we at least store it so nothing is lost. This makes our integration more valuable by connecting tasks to code workflow.
+
+* **Extensible Integration Architecture:** Beyond just Linear, the way we implement this sync will be done in a **pluggable** manner to support future connectors (Jira, GitHub Issues, etc.) with minimal changes . While not directly a user-visible feature, this is a core architectural design that ensures longevity of the product. **What it means:** We will structure the code such that “Linear integration” is implemented as a module or plugin that hooks into Taskmaster’s task events, rather than deeply hardcoding Linear logic throughout the codebase. Concretely, we introduce an **Integration Manager** in Taskmaster: a component that can register multiple integrations. Each integration (Linear, and potentially others later) will define handlers for events like “onTaskCreated”, “onTaskUpdated”, “onTaskStatusChanged”, “onTaskRemoved”. Taskmaster’s core will be lightly modified at the points of task operations to notify the integration manager, which in turn invokes all registered integration handlers. For Phase 1, only the Linear plugin is registered, so it gets all the events and performs the sync actions as described. However, adding a new integration (say “JiraIntegration” plugin) would simply involve writing a new module with the same interface (handlers) and adding it to the registration – no need to alter the Taskmaster core logic for each new system. This isolation is important because it keeps the Taskmaster fork easy to maintain (we won’t sprinkle Linear-specific code everywhere, reducing merge conflicts when upstream Taskmaster updates) . It also allows users to potentially opt into different integrations via config (e.g. integration: "linear" or "jira"). In v2 PRD, we focus on Linear, but we ensure the scaffolding is in place.
+
+   *Example:* The Taskmaster CLI command implementation for adding a task might look like:
+
+```
+const task = addTaskToJSON(...);  // existing local function
+if (integrationManager.isEnabled()) {
+    integrationManager.handleEvent('taskCreated', task);
+}
+```
+
+*   
+  And our integrationManager.handleEvent('taskCreated', task) will call LinearIntegration.onTaskCreated(task). The LinearIntegration module encapsulates all the Linear-specific logic (forming API requests, mapping fields) discussed earlier. By centralizing it, if Linear’s API changes or we need to adjust mapping, it’s in one place. Likewise, the manager could call other integration modules’ handlers (if configured).
+
+   As part of this, we will add new CLI commands in a separate file/folder (e.g. commands-linear.js) to keep them modular . For instance, sync-setup, sync-pending commands will reside in the Linear integration module. This prevents entangling them with core commands and makes it clear these are extension commands. Our fork’s README or help will include these new commands for the user.
+
+   Finally, to **illustrate extensibility**, we will provide a simple example integration: a hook on task status change that triggers an external action. For example, an integration that, when a task is marked “in-progress”, automatically creates a corresponding Git branch in the local repository. While not fully implementing such a feature in Phase 1, we will demonstrate how it *could* be done with the new architecture: e.g. a small plugin that listens to onTaskStatusChanged(task, newStatus) and if newStatus \== "in-progress", it runs git checkout \-b \<task.branchName\> (using the stored branch name from Linear). This showcases the power of the event system and will be documented for users who might want to script their own automations . The integration framework thereby turns Taskmaster into a hub that can drive multiple tools in sync with task events. This design is future-proofing: today Linear, tomorrow any system (Jira, Trello, GitHub, custom scripts) can be plugged in by following the same pattern.
+
+## **User Experience**
+
+The user experience is designed to be smooth and mostly “invisible” for the primary user (the developer using Taskmaster). We identify two main personas and their journeys:
+
+* **Persona 1: Software Developer (Taskmaster CLI User)** – This is the primary user who will enable and experience the integration.
+
+  * **Initial Setup:** The first time they decide to use the Linear sync, the developer runs task-master sync-setup. They are prompted for their Linear API key (which they paste securely – input hidden), then prompted to select their Linear team from a list (e.g. “1. Engineering, 2\. Design”) , and optionally a project. They answer a few yes/no questions about labels and states (or accept defaults). The CLI then confirms “Linear sync configured\! All new Taskmaster tasks will sync to Linear.” . This is a one-time onboarding taking perhaps 1-2 minutes. It greatly simplifies what would otherwise require manual config file editing. After setup, the developer’s Taskmaster is “connected” to Linear.
+
+    * *Edge during setup:* If they input a wrong API key or network fails, the CLI will catch the error from the test query and alert them (“Invalid API key, please try again”). This feedback loop ensures they don’t proceed with a bad config .
+
+    * If the project already has existing tasks in tasks.json with no Linear links (perhaps they add sync to an ongoing project), the CLI will detect this. After setup, it might say “Detected 5 existing tasks without Linear issues. Create issues for them now? (Y/n)” . If the dev agrees, the integration will batch-create those 5 issues and update the tasks with IDs, ensuring everything starts in sync. If they skip, they can always run task-master sync-pending later to do it. This approach avoids an unexpected flood of issue creations without user consent, but provides a convenient option to backfill Linear .
+
+  * **Daily Task Workflow:** Once configured, the developer continues using Taskmaster CLI as before to manage tasks:
+
+    * When they **add a new task**, e.g. task-master add-task "Implement login API", Taskmaster will create it locally. Immediately after, the CLI prints an extra line like “✓ Synced to Linear as ENG-48” in green . The developer doesn’t have to do anything else. If they check Linear, they’d see the issue created almost instantly. The CLI output gives them confidence that the sync happened (or a warning if not). If, say, they were offline and see “(Linear sync failed)”, they know to sync later but also know their local task is safe .
+
+    * As they **update tasks**, such as editing the title or adding details (some future CLI command) or more commonly **mark tasks done** (task-master set-status 3 done), the CLI similarly confirms the Linear update: e.g. “Task 3 marked done (Linear issue closed)” . If they mark something “in-progress”, it might confirm “(Linear issue moved to In Progress)”.
+
+    * When they **remove or cancel a task** (task-master remove-task 10), the CLI confirms “Task 10 deleted (Linear issue archived)” . This feedback loop keeps the developer aware of the integration’s actions without being intrusive.
+
+    * The developer might also use advanced Taskmaster features like parse-prd to generate multiple tasks. In that case, after the parse creates, say, 10 tasks, the CLI could output something like:
+
+```
+Created 10 tasks from PRD.
+Syncing to Linear... 
+✓ 10 issues created in Linear (Project ENG backlog)
+✓ Dependencies linked (e.g. ENG-51 blocks ENG-57)
+```
+
+    *   
+      This indicates the bulk sync success. Under the hood it created tasks one by one and then their relations . We ensure this doesn’t overwhelm the user with 10 separate lines; a summary is cleaner for bulk operations.
+
+    * If any issue occurs (like 3 out of 10 failed due to rate limiting), the CLI would clearly report it: e.g. “⚠ 2 issues failed to sync (will retry with sync-pending).” But ideally, we handle rate limits transparently (the Linear API has generous limits for moderate use; if not, we could insert small delays or detect rateLimitError and pause).
+
+    * Throughout normal usage, the developer **does not need to log into Linear or do anything extra** – they continue in their terminal as usual. The only differences are these added confirmation messages and perhaps slight delays of a second or two when network calls happen (which we aim to keep minimal). The local operations themselves (file writes) remain fast; network calls happen asynchronously after file I/O, so the CLI might show a spinner or just do it quickly. The developer can trust that their CLI is keeping Linear updated for them.
+
+    * **Accessing Branch Names:** With the branch name sync, when the developer adds a task, the CLI could output the suggested branch name for convenience. For example: after “Synced to Linear as ENG-48”, we might add “(branch: eng-48-implement-login-api)”. This is a nice-to-have that can be toggled on. It reminds the dev what branch name to use. If not in the default output, the developer can retrieve it by checking the task details (task-master show 3 could display the branch name if stored). This small addition ties into their git workflow.
+
+    * **Using the Sync Commands:** In general, once auto-sync is enabled, the developer doesn’t need to manually invoke sync commands. However, we provide a couple of commands for edge cases:
+
+      * task-master sync-pending: The developer can run this at any time to (re)attempt syncing any unsynced tasks. The tool will scan tasks.json for any task missing linearIssueId and create any that exist. A typical use: after coming back online from offline work, run sync-pending to push everything. It prints results for each or a summary.
+
+      * task-master sync-status (or an audit command): We might provide a read-only check, e.g. this command could verify that for each task, the corresponding Linear issue exists and is in the correct state. If not, list any discrepancies. This is more for troubleshooting and may not be heavily used in normal flow, but it’s helpful for the user to self-serve if something seems off.
+
+      * These commands are documented in the README and help output. They do not interfere with the normal event-driven sync (they’re supplementary).
+
+    * **Multi-Project Use:** If the developer works on multiple repositories, each can be configured to a different Linear project or team. The CLI will use the config of the current project directory (since Taskmaster’s config is stored per project) . This means the dev might have Project A syncing to “Engineering” team and Project B syncing to “Mobile” team, and the CLI will handle it as they switch directories, as long as they ran setup in each. This scenario is straightforward and the UX is essentially the same in each project context.
+
+  * In summary, from the developer’s perspective, after the one-time setup, the integration mostly fades into the background and just keeps things in sync. The CLI’s slight enhancements (confirmations, maybe showing Linear issue IDs) are the only indicators of the magic happening. The developer saves time by never needing to open Linear to create or update issues for their own tasks; they work in their terminal and know the team is up to date.
+
+* **Persona 2: Product Manager / Team Lead (Linear User)** – This is a secondary persona who doesn’t use Taskmaster, but benefits from the integration. Their experience is entirely within Linear’s web or app interface:
+
+  * Once the developer has the sync running, the PM will start seeing issues appear in Linear whenever the developer adds tasks. For example, if the dev parsed a PRD into tasks, the PM might suddenly see a batch of new issues in the Linear backlog (with titles and descriptions matching what the dev is working on). These issues will be labeled “Taskmaster” (so the PM knows they were auto-generated) and possibly labeled with other info like language or category, which the PM can use to filter or organize (e.g. they can filter to only show “Feature” tasks, or tasks labeled “Frontend”). The labeling ensures the PM can distinguish between these and manually created issues if needed.
+
+  * As the developer progresses and marks tasks done, the PM sees those issues automatically move to Done in Linear (or whatever state corresponds). For example, they open the Linear board and see “Implement login API – Done” without needing to chase the dev. This provides real-time status updates. If the PM has any notifications setup in Linear (like getting notified when certain issues are done), they’ll get those as usual.
+
+  * The hierarchy of tasks is visible: if the dev has a parent task “Login Feature” with subtasks “Implement backend”, “Implement UI”, the PM sees a Linear issue “Login Feature” with sub-issues underneath. They can click and view each sub-issue. Dependencies are also visible: Linear will show indicators like “Blocked by ENG-50” on an issue if there’s a dependency, so the PM knows task X can’t start until Y is done.
+
+  * If the PM uses Linear’s roadmap or reporting features (like burn-down charts by estimates or cycle planning), the integration helps because all the developer’s tasks are in Linear. For example, if the team estimates in story points (and we map Taskmaster complexity to Linear estimates), the PM can see total story points in a cycle including those tasks. They’ll also see the developer assigned (the integration sets the issue creator as the assignee by default, which is the dev’s Linear account) , so it’s clear who’s doing the task.
+
+  * **Limitations for PM:** The PM should be aware (via team communication or documentation) that if they make changes to these synced issues in Linear, those changes won’t go back to the developer’s CLI in Phase 1\. For instance, if a PM edits the title of an issue in Linear to clarify it, the developer’s local task will still have the old title . Ideally, the developer will see that change in Linear and perhaps manually update their task or just note the difference. In practice, during Phase 1, it may be best if PMs treat these issues as read-only or at least coordinate changes with devs. We will document this known gap. Many PMs might not edit at that granularity anyway – they might just comment or observe.
+
+  * The PM can, however, comment on the Linear issues or attach additional info; since the dev likely checks Linear at least occasionally or gets notified via Linear of comments, this can be a way to communicate. For example, PM leaves a comment “Please ensure this follows the new API guidelines” on an issue. The developer will see that in Linear (or via Linear’s email/slack notifications) – this is unaffected by the integration, which only syncs the core fields.
+
+  * If a PM closes an issue or changes its status in Linear (e.g. they think something is done and mark it done), currently Taskmaster won’t know. This is a process thing to handle: maybe the PM won’t do that unless confirmed by dev. If it happens, there’s a risk of confusion as noted (issue closed in Linear but task open locally) . In small teams, this is manageable via communication. In the future, we’ll solve it with bidirectional sync.
+
+  * Overall, the PM’s experience is improved because they have near real-time visibility of the developer’s workload. In planning meetings, they can simply look at Linear – tasks the dev has planned or completed are all there without the dev needing to manually update them. The integration essentially makes the dev’s local planning part of the official project tracker, which is a big win for transparency. One could say the **team’s single source of truth is enhanced**: the dev trusts their CLI, and the PM trusts Linear, and sync makes those one and the same content.
+
+* **UI/UX Considerations:** Since this is largely a backend integration with CLI output, UI considerations are about clarity and minimalism:
+
+  * We use **clear console messages** to inform the developer of sync actions. Success messages are green checkmarks (✓) with concise text. Errors/warnings are yellow or red with clear instructions (“Linear sync failed – check internet or API key, and run sync-pending later”) . We avoid flooding the console; for example, on a batch operation, group results rather than 100 lines of output.
+
+  * The CLI help (task-master \--help) will list new commands like sync-setup, so users discover them. Documentation (README/MD file) will have a section on “Linear Integration” explaining setup and usage clearly, including any limitations.
+
+  * The **config file** (JSON) and .env usage is under-the-hood for most, but advanced users might edit config.json directly to tweak mappings. We’ll keep that structure simple and well-documented (e.g. an entry in config like "linear": { "teamId": "...", "stateMapping": { "done": "state-id-1234", ... }, "useLabels": true, ... } which advanced users can adjust if needed). Most won’t need to.
+
+  * Performance: The sync calls happen very fast (creating an issue is a quick API call). But if a user does something like add 20 tasks in a loop, we should handle that gracefully (maybe slight rate limiting or using Linear’s batch API if available). This is under the hood; the user might just notice a slight delay if they spam operations. This is an edge case.
+
+  * If multiple developers use the integration on the *same* Linear project, it might create duplicate tasks if they both have a task with the same local ID . However, typically each developer works in their own repo or different task IDs. We’ll assume one dev per Taskmaster project to keep UX simple (multi-user concurrency is out of scope except via version control merges). If they do collaborate via Git on tasks.json, they’d coordinate merges anyway.
+
+  * **Failure modes:** If the user’s API key expires or is revoked, Linear calls will start failing (401 errors). The CLI will alert the user on each attempt (“Unauthorized – your Linear API key may be invalid”) prompting them to re-run sync-setup with a new key. This is important so they know to update credentials. We might add a check: on every CLI launch, do a quick no-op Linear query to fail fast if the key is bad, and warn once.
+
+  * **Security:** We instruct users to keep the API key safe (the .env is in .gitignore by default so it shouldn’t be committed). We never log the key. The config (with teamId etc.) is not sensitive but we keep it local.
+
+In summary, **Developer UX**: minimal overhead, mostly automatic sync with informative messages; **PM UX**: full visibility in the familiar Linear interface. Both benefit from less manual work and fewer missing updates. The integration respects the developer’s preference for CLI and the PM’s preference for GUI, satisfying both with one effort. The whole experience should feel like Taskmaster just “speaks” Linear natively.
+
+## **Technical Architecture**
+
+This section outlines how the system is implemented under the hood – the components, data flows, data models, and integration points that make the Taskmaster ↔ Linear sync possible. The architecture is designed for clarity, robustness, and extensibility.
+
+*Figure: High-level architecture of Taskmaster CLI integration with Linear. The developer uses the CLI locally; tasks are stored in a local JSON file and sync operations are triggered to the Linear API via the Linear integration module (plugin). All network communication with Linear is through the official GraphQL API, using a personal API key for authentication.*
+
+### **System Components & Integration Flow**
+
+* **Taskmaster CLI (Local):** Taskmaster is a Node.js CLI app that the developer runs on their machine. It manages tasks stored in a JSON file (tasks.json) within the project. The CLI is structured with commands (add-task, set-status, etc.) implemented in a modular way (each command is a function in the Taskmaster codebase) . This CLI is the starting point for all actions. In our integration, we instrument the CLI’s command handlers at specific **intercept points** – right after a task is created, updated, or deleted locally – to initiate the Linear sync for that event . The CLI will act as the orchestrator: it performs local changes and then calls out to the Linear integration logic.
+
+* **Local Data Store (tasks.json and files):** Taskmaster stores all tasks in a structured JSON file (and sometimes generates individual .txt files per task for convenience) . This file is the “single source of truth” for tasks on the local side. It contains all task attributes and now will include additional fields for Linear sync (like linearIssueId). The integrity of this file is critical; our integration carefully updates it whenever a Linear sync yields new info (e.g. writing back the issue ID) . We use existing Taskmaster file I/O utilities to read/write JSON. We ensure file operations remain atomic to avoid corruption (Taskmaster usually writes to a temp file and swaps, to not break tasks.json mid-write) . If tasks.json is missing or corrupted, Taskmaster itself might break; we don’t change that behavior except perhaps to detect and log a clear error for sync. If tasks existed prior to enabling sync, as mentioned, we handle that via optional initial sync steps. We do not change how Taskmaster uses .taskmaster/tasks/ directory for storing task text files, except possibly appending Linear info in those files if needed (not necessary, but could include Linear IDs or URLs in the text files for reference).
+
+* **Linear API (Cloud):** Linear provides a GraphQL API that we access through their Node SDK (@linear/sdk). The SDK allows us to call mutations like createIssue, updateIssue, archiveIssue, etc., and to query data like team states . We will instantiate a LinearClient with the user’s API key . All network calls go to Linear’s servers. Each call typically returns data or a success flag. For example, linearClient.createIssue({ teamId, title, description, parentId }) returns an object with issue: { id, identifier, ... } on success . We check these responses to retrieve things like the new issue’s id (GraphQL UUID) and identifier (human-readable like ENG-47) . We also use queries: e.g., on setup, linearClient.teams to list teams for selection, or linearClient.team(teamId) to get workflow states and their IDs (to map “Done” etc.) . The API calls are relatively straightforward due to the SDK abstraction. We do need to be mindful of **rate limits**: Linear’s API might limit requests (though specifics aren’t heavily documented publicly, we assume a safe threshold like 50-100 calls/minute). Our usage is usually one call per task operation, which is low frequency. The one time we might burst is after parse-prd or initial sync when many tasks could be created in a loop. In those cases, if, say, 50 tasks are created at once, we might hit a rate cap. Our strategy: the SDK will likely throw an error or return an error on rate limit – if that happens, we implement a simple backoff (wait a couple seconds, then continue) and/or chunk the operations. Additionally, Linear supports a createIssue mutation only one at a time (no bulk create mutation), so we can’t send all in one request. But we can optimize by parallelizing some calls if safe. However, to preserve order (especially for dependency linking which needs all IDs ready), we mostly do them sequentially. Overall, we anticipate not hitting limits in normal use, but we include mitigations in code for those edge cases (and document the possibility as a risk).
+
+* **Linear Integration Module (Plugin):** This is our code module dedicated to handling Linear sync logic. We will likely create a file or set of files like linearIntegration.js (or a folder integrations/linear/ with multiple files for clarity). This module encapsulates:
+
+  * Initializing the Linear client (with API key).
+
+  * Functions like syncTaskCreate(task), syncTaskUpdate(task), syncTaskComplete(task), syncTaskDelete(task) corresponding to different events. These functions contain the API calls and any mapping logic needed for that event.
+
+  * Possibly utility functions, e.g. to fetch and cache the Linear team’s workflow state IDs (so we can reuse Done state ID on every completion without fetching each time).
+
+  * Also the CLI commands related to Linear (the setup and sync commands).
+
+  * In essence, this module is a translation layer between Taskmaster’s world and Linear’s world.
+
+     We designed it as a plugin so that in the future, a different plugin (e.g. jiraIntegration.js) could be written with similar structure but calling Jira APIs. The Taskmaster core would call both if both enabled, or whichever is configured.
+
+* **Integration Manager / Event Dispatcher:** To connect the Taskmaster core to the integration module with minimal intrusion, we introduce an event dispatcher. This could be as simple as an object with methods to register handlers and emit events. For Phase 1, we will integrate it directly: e.g. import the Linear module and call its functions inline. But to future-proof, we abstract it slightly. For instance:
+
+```
+// Pseudocode inside addTask command
+const newTask = addTaskToLocalJSON(...);
+integrations.emit('taskCreated', newTask);
+```
+
+*   
+  Where integrations.emit will call linearIntegration.onTaskCreated(newTask) under the hood. The integrations manager can be initialized at CLI startup, reading config to know which integration(s) are active. If Linear integration is enabled in config, it registers those handlers. If tomorrow a config says Jira integration on, it registers Jira’s as well.
+
+   The benefit is Taskmaster’s core logic remains ignorant of specifics – it just emits events. This approach aligns with the open/closed principle (we can add new integrations without modifying the core emit points; just register new handlers). We will implement this manager in our fork in a lightweight way (perhaps in the scripts/modules/ area or integrated with Taskmaster’s command registration system).
+
+   One challenge is certain operations might need to be slightly **synchronous** or at least sequential. For example, when a task is created, we ideally want to finish the Linear API call before completing the CLI command, so we can output the Linear issue identifier to the user. This suggests our event handling for taskCreated will be async and we await it in the CLI flow to then print the success message with Linear ID . That’s fine – we can have await integrations.emit('taskCreated', newTask). The manager can internally await each integration’s handler. If one integration fails (throws), we catch and log but still let others run or complete. We ensure a failure in the Linear handler doesn’t stop the CLI from moving on (which is handled by our try/catch at each call site).
+
+* **Local Config Storage:** As mentioned, Taskmaster has a config.json (either global or per project). We extend this with a linear section to store config values . For example:
+
+```
+"linear": {
+  "teamId": "abcd-1234-efgh-5678",
+  "projectId": "wxyz-9999",
+  "autoSync": true,
+  "stateMapping": {
+     "todo": "state-id-111",
+     "inProgress": "state-id-222",
+     "review": "state-id-333",
+     "done": "state-id-444",
+     "canceled": "state-id-555"
+  },
+  "useTaskmasterLabel": true,
+  "useLanguageLabels": true,
+  "useCategoryLabels": true
+}
+```
+
+*   
+  The actual keys may vary, but that’s the idea. Some of these (like state IDs) could be populated on setup by querying Linear, or left for advanced user to fill if they customize workflow names. If we do fetch automatically, we might just store the ones we need (e.g. Done, Todo, etc.) and assume defaults for others. The config is read by the integration module to know how to map statuses and which features to enable. The API key is **not** stored here – only in .env as LINEAR\_API\_KEY . On runtime, we load environment variables (Taskmaster already uses dotenv to load .env on start) , then use process.env.LINEAR\_API\_KEY when constructing the Linear client. That way, the secret is not in any config file.
+
+   The CLI’s sync-setup command will populate this config. It might append to the JSON or create the section if needed. We’ll reuse Taskmaster’s config manager utility if one exists (there is likely a config-manager.js in Taskmaster core that can update config) . If not, we carefully write to the JSON file.
+
+* **Data Model & Schema Changes:** Extending Taskmaster’s task schema for Linear integration:
+
+  * We add linearIssueId (string) to each task object . This will store the Linear issue’s unique ID (a UUID). This is used for all future references (updates, etc.).
+
+  * We add linearIssueNumber (string) to store the human-readable issue key, like “ENG-47”. This isn’t strictly needed for functionality, but it’s helpful for the user (we can display it) and for debugging. It’s like a shorthand reference. PRD v1 suggested storing it for convenience.
+
+  * We add branchName (string) to store the Linear branch suggestion .
+
+  * We might add category (string) if implementing task type labeling.
+
+  * All these new fields will be optional/present only if sync is enabled and after an issue is created. Taskmaster’s core should ignore unknown fields in tasks (it likely will). We should verify that adding these doesn’t break anything. Since Taskmaster is JSON-based and often iterates task objects, extra fields should be fine (and indeed PRD v1 example JSON included a linearIssueId in subtasks as a comment example). We’ll ensure any deep copy or serialization logic accounts for them.
+
+* Linear Issue data model vs Taskmaster:
+
+   We created a **mapping table** (updated from PRD v1) to summarize how fields correspond:
+
+| Taskmaster Task | Linear Issue | Notes |
+| ----- | ----- | ----- |
+| id (local task ID number) | *n/a in Linear* | Used only locally. Linear generates its own IDs. We don’t expose local IDs in Linear, except possibly in title. |
+| title | title | 1:1 mapping . |
+| description \+ details \+ testStrategy | description (Markdown body) | Concatenated into one Markdown string . Sections are formatted for clarity. |
+| status \= pending/in-progress/review/done/deferred/cancelled | state (workflow state) | Mapped via stateId to corresponding Linear state (Todo, In Progress, In Review, Done, etc.) . Deferred might use a label or remain in Todo state if no equivalent. |
+| priority \= low/med/high | priority (if enabled) or label | Mapped to Linear’s priority field (High/Medium/Low) . If Linear priority not in use, we apply a “Priority: X” label as fallback . |
+| dependencies \= \[ids\] | Issue relations (blocking) | For each dependency, create a “blocks” relation in Linear (current task blocked by each listed task) . Removal of dependency removes relation. |
+| Task with subtasks | Issue with sub-issues (parent) | Top-level Taskmaster task → Linear issue with no parent; Subtask → Linear issue with parentId set to parent’s id . |
+| Subtask numbering (e.g. 5.1, 5.2) | Linear sub-issue ordering | Linear doesn’t enforce sub-issue order; we might prefix titles with numbers or rely on creation order. No automatic strict ordering sync (v1 leaves as is) . |
+| (No direct equivalent) | projectId | If config specifies a Linear Project, we pass that when creating issues so they’re grouped . Otherwise left null. |
+| (No direct equivalent) | assigneeId | By default, set to the user (API key owner) so that the issue is assigned to the developer . This happens implicitly because the API key user is the creator – Linear typically shows them as creator but not necessarily assignee. We may explicitly assign to them for clarity. |
+| *Integration fields:* |  |  |
+| linearIssueId (UUID) | Issue id | Stored for reference to update/relate issues . Hidden from user (not shown in CLI). |
+| linearIssueNumber (e.g. “ENG-47”) | Issue identifier | Stored for convenience; shown in CLI confirmations and could be shown in task list. Not needed for API calls (redundant with id). |
+| branchName | Issue branchName | Linear’s suggested branch name . Used for developer’s git workflow. |
+| category (if used) | Label on issue | E.g. “Feature” or “Bug” label as determined . |
+| previousStatus (Taskmaster field tracking last status, if any) | *No direct mapping* | (Taskmaster might use this internally for UI, not relevant to Linear sync except perhaps for triggers like status change events.) |
+
+*   
+  This mapping ensures we cover all important fields. It shows that essentially all Taskmaster info is replicated in Linear either through fields or labels, except things purely internal like local IDs. Conversely, fields that Linear has which Taskmaster doesn’t (like Linear’s “estimate” or “due date”) are generally not set by this integration unless we add support:
+
+  * **Estimates (Story Points):** We plan to support Linear’s estimate field by leveraging Taskmaster’s complexity analysis. If the team has estimates enabled, on issue creation we can set an estimate value. Taskmaster’s “complexity report” often outputs a complexity score or size for tasks. In Phase 1, a simple approach: if a task has a complexity rating, map it to a number (e.g. complexity “small” \= 1, “medium” \= 3, “large” \= 5 in Fibonacci) . If tasks don’t have such info, we leave estimate empty (or 1 by default, as Linear does when not estimated ). We’ll allow config to adjust this mapping or to disable auto-setting estimates. This way, burn down charts reflect a sum of those complexities. Over time, this can help calibrate AI-generated complexity with actual effort.
+
+  * **Cycle (Sprint) assignment:** Not in scope for auto-sync in Phase 1 (we won’t assign issues to cycles).
+
+  * **Additional Linear fields (due dates, etc.):** Not automatically set; user can still set them in Linear if needed.
+
+* **Intercept Points in Taskmaster Code:** We identified exactly where in the Taskmaster code we’ll insert our sync triggers :
+
+  * After adding a task (in addTask function) – right after writing to tasks.json succeeds .
+
+  * After adding a subtask (addSubtask) – similar spot .
+
+  * After converting a task to subtask (still in addSubtask or a moveTask if available) – we call updateIssue to set parent .
+
+  * After updating a task’s title/description (updateTaskById) – call updateIssue with new fields .
+
+  * After marking status (setTaskStatus) – call updateIssue to change state .
+
+  * After removing a task (removeTask) – call archiveIssue .
+
+  * After removing a subtask (removeSubtask) – call archiveIssue for that sub-issue.
+
+  * After parsing PRD or bulk adding multiple tasks (parse-prd command) – we hook at the end of that command to handle syncing multiple tasks in one go (create each issue, then do dependencies) .
+
+  * Possibly after commands like move-task (if Taskmaster has one to reorder tasks or move between categories) – reordering we largely ignore as explained, but if move-task implements converting a task to subtask or vice versa, we ensure to handle that by create or update parent accordingly. We believe add-subtask \--existing covers moving a task under another .
+
+  * We add new commands (sync-setup, sync-pending) in their own module, and integrate those into the CLI’s command registry (Commander.js configuration) so the user can invoke them.
+
+Each intercept point uses the Integration Manager to emit events, which the Linear module handles:
+
+* E.g. on taskCreated: Linear module prepares input (teamId from config, title, description text, parentId if any, priority, projectId if any) and calls linearClient.createIssue(...). On success, it gets issue.id, issue.identifier, issue.branchName from the response . It then updates the task object in memory (and ideally calls Taskmaster’s function to write the updated tasks.json with the new linearIssueId). We have to be careful to avoid a race where tasks.json was just written, and now we write again to add the ID. We can either:
+
+  * Write the file twice (as PRD v1 pseudo-code did) – first without IDs, then after getting Linear ID, write with ID. This ensures the ID is saved. It’s a small performance hit but probably fine. We’d need to handle if the second write fails (low chance).
+
+  * Or optimize by delaying the initial write: some approach like call Linear first then write once. But that breaks our rule of not blocking local operation on network. So better to do two writes: local first (fast), then attempt Linear, then update file.
+
+  * Alternatively, we can write the Linear ID into the in-memory task and rely on Taskmaster’s normal flow that maybe at end of command it flushes all tasks to file again. But Taskmaster likely doesn’t re-write tasks.json automatically after initial add (it already did). So we handle it.
+
+  * We will implement: after creating issue, open the file (or in-memory tasks list), find that task by local ID, insert linearIssueId and linearIssueNumber, and write file. If that fails for some reason, we at least log it. We may also consider locking to prevent other Taskmaster operations in the split second between writes – but given the CLI is single-threaded and tasks likely aren’t added concurrently, it’s okay.
+
+  * For subtask creation, similar, but we already have parent’s linearIssueId to set parentId.
+
+* on taskStatusChanged: Linear module finds the corresponding stateId from config or cache and calls issueUpdate(issueId, { stateId: ... }). If marking done, use Done state; if marking deferred, maybe skip or add label; if cancelled, use Canceled state or archive.
+
+* on taskRemoved: calls archiveIssue(issueId) which is synchronous (it will return success).
+
+* on tasksBulkCreated (after parse-prd): possibly a special handler that takes an array of tasks and does all in sequence.
+
+* **Error Handling & Logging (Detailed):** We wrap each Linear API call in try/catch at the integration level. If an exception or error response occurs:
+
+  * The integration module returns an error indicator to the CLI command handler. The CLI then prints a warning as described.
+
+  * We do not throw errors up that would abort the CLI command (so the CLI commands likely always resolve to success from the user perspective as long as local part succeeded).
+
+  * We accumulate any errors for bulk ops and present them at end.
+
+  * We also plan a simple retry mechanism for transient failures: e.g. if a network request fails due to a network glitch, we might retry it once after a short delay before giving up, to handle flakiness. Not too many retries to avoid long hangs.
+
+  * If Linear returns validation errors (e.g. our request had something invalid), that likely indicates a bug or config issue (like wrong projectId). We will log it and perhaps suggest to the user to check config.
+
+  * All error logs will be done using Taskmaster’s logging utility or console.error with clear formatting . We prefix messages with something like “\[Linear Sync\]” to differentiate from other output.
+
+  * Example: If API key is wrong (401), when trying to sync a task, we catch it and output “Linear sync failed: Unauthorized (check your API key)”. Perhaps also set a flag so we don’t spam the same error on every subsequent task in that run. Possibly, the first failure can mark “sync disabled until config fixed” to avoid repeat attempts, but that might hide issues. We can at least avoid flooding by one error per command.
+
+  * In the case of rate limit (429), the SDK might include backoff info. If we detect that, we can pause and retry or inform the user to run sync-pending after some time. This is an edge case due to bulk sync. We mitigate by spacing out calls if a very large number.
+
+* **Concurrency and Threading:** Node is single-threaded; our CLI commands run sequentially. If the user somehow triggers multiple tasks in parallel (unlikely from a human, but perhaps if Taskmaster had an async mode or background), we have to ensure our file writes and API calls don’t conflict. Since commands likely run one at a time in the CLI, we are safe. If Taskmaster ever had a long-running generate and the user tries another command, it’s probably locked anyway. So concurrency within one CLI process is not an issue. Multi-process (two instances of Taskmaster CLI in same repo at once) could cause conflicts with file and integration (and duplicates). We consider that an edge case and not explicitly handled beyond typical file lock (Taskmaster doesn’t have file locking, so it’s user responsibility). Multi-user on same Linear project was discussed; we decided to not actively handle beyond documenting it . If it occurs, worst-case they might create duplicate issues for same task if both ran sync for it – which is rare and can be manually resolved (delete one issue).
+
+* **Performance:** The overhead per task operation is one network call (except adding a dependency might cause extra calls for relations). This is negligible in most cases (each call maybe 100-200ms). The user may notice a slight pause after a command if network is slow, but typically it’s fine. If performance is a concern (e.g. someone adds tasks in a rapid loop via a script), they could disable autoSync (set autoSync:false in config) and then do a batch sync later – we support that flexibility. For the majority, having autoSync on and one call at a time is okay. Node can handle asynchronous calls easily. We also make sure to not do anything like polling in background in Phase 1 (no daemon process). The integration only runs when the user runs commands.
+
+* **Integration with Upstream Code:** Since we are forking Taskmaster, we aim to minimize changes to existing files:
+
+  * We will likely modify the command handlers (in Taskmaster’s task-manager module or wherever commands are defined) to add the event emissions. We keep those additions small (a few lines each).
+
+  * We add new files for our integration logic to keep separation .
+
+  * We add our new commands to the CLI by either using Taskmaster’s extension points or injecting them in the command registration. Taskmaster uses Commander for CLI; we can add additional .command() calls for sync-setup etc. Ideally in our own module that then is imported in main command registration.
+
+  * This modular approach ensures that if the Taskmaster base project updates their commands, our changes might still apply cleanly. For example, if upstream changes how addTask works internally but still calls a write at end, our hook might still work. We should clearly mark our fork’s differences for maintainers (comments or documentation).
+
+  * The plugin architecture also means in the future, if Taskmaster itself decides to implement such integration or if we contribute it upstream, it’s structured.
+
+### **Development Environment & Tools**
+
+* We will use the Linear JavaScript/TypeScript SDK (within our Node code). This SDK abstracts GraphQL queries/mutations in convenient methods . We need to ensure the SDK is added as a dependency in the project’s package.json (e.g. "@linear/sdk": "^1.x"). If not using the SDK, we could call GraphQL via fetch, but SDK is easier and robust. The SDK also handles things like pagination if we needed to list lots of items.
+
+* Using the SDK means we should also pay attention to its initialization. It might be lazy or we explicitly call new LinearClient({ apiKey }) once. We can do that at program start (when config is loaded). Possibly create a singleton instance in our integration module. That client can be reused for all calls in that run. Taskmaster is a CLI that exits after command (unless running in some watch mode), so a fresh client per invocation is fine.
+
+* Authentication: personal API key is essentially a token the SDK sends in Authorization header. We must ensure the scope of that token in Linear is enough to create and manage issues (personal tokens typically have all rights of the user).
+
+* If needed, we may consider an OAuth app for multi-user scenarios, but not now. One dev’s token suffices.
+
+### **Example Sequence (End-to-End)**
+
+To solidify understanding, here’s an example sequence of a user adding a task and then marking it done, showing interactions between components:
+
+**User adds a task:**
+
+1. Developer runs task-master add-task "Implement OAuth" in terminal.
+
+2. **CLI (Commander)** calls the handler in Taskmaster’s code for add-task.
+
+3. **Taskmaster Core (addTask function)**: reads tasks.json, constructs a new task object (id 7, title “Implement OAuth”, status pending, etc.) .
+
+4. Writes the updated tasks.json to disk with the new task .
+
+5. After local save, our inserted hook triggers: integrations.emit('taskCreated', task7).
+
+6. **Integration Manager** calls LinearIntegration.onTaskCreated(task7).
+
+7. **LinearIntegration.onTaskCreated:**
+
+   * Prepares the API input: teamId from config, title="Implement OAuth", description="..." (combined fields), no parentId (top-level task), priority if any.
+
+   * Calls await linearClient.createIssue({...}) .
+
+   * Linear API processes and returns a new issue (say with id abc-123-uuid and identifier “ENG-47” and branchName “eng-47-implement-oauth”) .
+
+   * Our code receives the result. It updates task7.linearIssueId \= "abc-123-uuid" and task7.linearIssueNumber \= "ENG-47" and task7.branchName \= "eng-47-implement-oauth".
+
+   * Writes this update to tasks.json (open file, find task 7, add those fields, save). Optionally, if tasks.json is small, we could rewrite the whole file; or perhaps Taskmaster has a updateTask utility we can call that does it for us. We’ll likely just do a write.
+
+   * If the write fails (rare), log error. If success, proceed.
+
+   * Compose a success message string.
+
+   * Returns control to integration manager.
+
+8. Integration Manager returns control to **Taskmaster Core**.
+
+9. The CLI prints the success message: “Task 7 created (synced to Linear as ENG-47)” (including branch name if we choose).
+
+10. Command ends. The developer sees that output. In Linear’s web app, issue ENG-47 is now visible in the backlog with title “Implement OAuth” and description from Taskmaster.
+
+**User marks task done:**
+
+1. Developer runs task-master set-status 7 done.
+
+2. **CLI** calls the set-status handler with task id 7 and new status “done”.
+
+3. **Taskmaster Core (setTaskStatus function)**: loads tasks.json, finds task 7, sets its status field to “done” . Writes tasks.json (task 7 now marked done locally) .
+
+4. Triggers our hook: integrations.emit('taskStatusChanged', task7, "done").
+
+5. **Integration Manager** calls LinearIntegration.onTaskStatusChanged(task7, “done”).
+
+6. **LinearIntegration.onTaskStatusChanged:**
+
+   * Looks up the Linear issue ID for task7 (task7.linearIssueId which was saved).
+
+   * Looks up in config the Linear state ID for “Done” (say doneStateId \= xyz-789 which we cached on setup).
+
+   * Calls await linearClient.updateIssue(issueId, { stateId: xyz-789 }) (via SDK, might be issueUpdate mutation) .
+
+   * Linear API moves the issue to Done, returns success.
+
+   * Our code could also do: if config says to do so, and if all subtasks of this task are done too, maybe mark parent done – but Taskmaster likely requires explicit parent completion, so we won’t auto-complete parent. We just sync exactly what user did.
+
+   * Compose success message. (If failed, compose warning.)
+
+7. Back in core, CLI prints “Task 7 marked as done ✓ (Linear issue closed)” .
+
+8. Developer sees that. In Linear, ENG-47 just moved to Done (maybe to the Done column). The PM sees it done.
+
+This sequence demonstrates local → remote propagation. For other operations it’s analogous:
+
+* Remove task: local delete, then Linear archive.
+
+* Add subtask: local add, then remote create with parentId.
+
+* Re-parent existing task as subtask: local move, then remote updateIssue parentId.
+
+* Add dependency: if via separate command, after adding dependency to task7 (e.g. “task7 depends on task3”), we’d call createIssueRelation(task7.issueId, task3.issueId, “blocks”).
+
+* In all cases, the integration module focuses on using Linear’s API correctly, while the core ensures the local file is updated first.
+
+### **Edge Cases and Additional Considerations**
+
+* **Ordering and Numbering:** As mentioned, reordering tasks is not synced. However, when a subtask is created, Taskmaster assigns it a sub-ID (like 5.3). We might include that in the Linear issue title for clarity (“5.3: Subtask title”) – this is optional but could help the dev/PM correlate the Linear list to the CLI list order . This would be done by prefixing the title on create or update of title. It’s a minor UI improvement and can be config-driven (some might not want numbers in titles in Linear). We note this as a possible enhancement.
+
+* **Deferred status mapping:** Taskmaster’s “deferred” status means paused or postponed. Linear doesn’t have an equivalent state by default. Our approach: for now, we will leave deferred tasks in an open state in Linear (e.g. still in Todo or In Progress, whichever it was) and maybe add a label “Deferred” to indicate it . If the team really wants to reflect it, they could create a custom Linear state “Deferred” and we could map to that via config. But by default, we won’t close the task or remove it; it stays open. The PM can filter or see the label. We document this mapping.
+
+* **Task updates (partial):** If a developer updates only part of a task (say just the description via some CLI or by editing the text file manually), we need to sync those changes too. There isn’t an explicit CLI command for editing a description aside from maybe re-running parse-prd or using an editor on the task file. If tasks.json is edited outside CLI, our integration won’t know to sync that. We assume most changes go through commands. If Taskmaster had a command like update-task 5 \--title "new" we catch it. If not, this is rare enough to ignore (or user can run a manual sync command to reconcile).
+
+* **Missing Linear IDs / Retroactive Sync:** If a user enables sync mid-project, not only initial tasks but also any new tasks created while offline (with sync disabled or if Linear was down) need handling. Our sync-pending covers that by scanning for tasks with no linearIssueId . We ensure this command can handle tasks that might already have a Linear issue by title (in case the user manually created some in Linear) – but matching by title is unreliable, so we won’t attempt that. We simply create new issues for those tasks and link. The user could end up with duplicates if they had manually made Linear issues earlier. We call this out as something to avoid or manually reconcile. We provide tools, but ultimately if the integration wasn’t on, we consider it a new sync.
+
+* **Multiple Linear accounts or environments:** The config is per project, but if a developer for some reason wants to use different Linear accounts on different projects (maybe work vs personal Linear), they just use different API keys in each project’s .env. This is supported out of the box. The CLI loads .env from current directory, so each project can have its own Linear API key. Typically, it’s the same user though.
+
+* **Multi-user scenario:** If two developers both use Taskmaster integration on the same Linear team, you could see issues created by each of them. It’s actually fine since each uses their own API key (issues show different creators). The main potential problem is if they share a code repo and thus share tasks.json. If they both create tasks with the same numeric ID in separate clones without syncing, upon merging their tasks.json you might have tasks with colliding IDs or missing Linear IDs. Those would confuse the integration (it might think a task with no ID is new). This is more of a general Taskmaster challenge (merging task files). The integration doesn’t solve it beyond recommending best practices: perhaps use unique ranges of IDs or run migrate to re-ID, etc. We assume in most cases it’s one dev driving Taskmaster for a given project . So we won’t implement any specific handling for multi-user beyond mention in docs as a potential conflict scenario.
+
+* **Testing and Quality:** We will write unit tests for the integration logic: e.g. a test for the LinearIntegration module simulating a task creation and using a stub Linear client to verify it calls createIssue with correct parameters for various input tasks (task with parent, task with dependencies, etc.). Also tests for mapping (ensuring “high” priority maps to the expected call, statuses map properly, labels toggles). Integration tests could include hitting Linear’s actual API in a sandbox environment if possible (or using a GraphQL mock). This ensures reliability.
+
+* **Diagrams & Documentation:** The team will maintain diagrams (like the sequence diagrams shown in PRD v1) in the documentation for clarity. They illustrate flows for various user stories (add task, complete task, etc.). These help new developers understand the integration points. We’ll update those diagrams to include new pieces (e.g. branch name coming back, plugin manager). For instance, sequence diagrams in docs will now show that after creating issue, the branch name is stored locally. We will also add an architecture diagram (similar to the one above) to the project README for dev reference.
+
+In conclusion, the technical architecture builds upon Taskmaster’s existing design of a local-first CLI, injecting a Linear synchronization layer that communicates with the Linear GraphQL API. We maintain a clear separation of concerns: Taskmaster manages tasks locally, the integration plugin translates those operations to Linear actions. This modular, event-driven approach not only solves the immediate problem (one-way sync to Linear) but also lays the groundwork for a more extensible system of integrations and automations in the future.
+
+## **Development Roadmap**
+
+We will implement the Taskmaster-Linear sync feature in phases, ensuring a usable MVP first and then iterating with enhancements. Below is the breakdown of development phases and the scope of each:
+
+**Phase 1: MVP – One-Way Linear Sync (Outbound)**
+
+*Goal:* Deliver a functional one-way sync from Taskmaster to Linear for all core task operations, with basic configuration and error handling. This phase provides immediate value by eliminating double entry of tasks.
+
+Scope of Phase 1:
+
+* **Linear Integration Plugin (Core)** – Develop the Linear integration module that can create/update/close issues on Linear as per Taskmaster events. Implement all event handlers: taskCreated, taskUpdated, taskStatusChanged, taskRemoved, subtaskAdded, etc. Test each handler against a real Linear workspace to ensure correctness (e.g. creating subtasks actually nests them) .
+
+* **CLI Hook Integration** – Modify Taskmaster command logic to emit events to the integration. Ensure this is done for all relevant commands:
+
+  * Add task, Add subtask, Remove task, Remove subtask, Set status, (if exist: Move task to parent, etc.), Parse PRD (after tasks generation).
+
+  * Use the Integration Manager or direct calls as decided (for MVP, direct calls or a simple manager with just Linear in it).
+
+* **Configuration & Setup** – Implement task-master sync-setup interactive wizard . This includes prompting for API key, team, project, and writing to config and .env. Also implement detection in CLI startup: if LINEAR\_API\_KEY not set or no teamId in config, either auto-prompt or at least print a reminder message on first sync attempt . Save autoSync:true in config to indicate sync is enabled.
+
+* **Environment Handling** – Load .env in the CLI (Taskmaster already does on startup) and retrieve API key to init Linear client .
+
+* **State Mapping** – During setup (or first run), fetch Linear team’s workflow states. Map default Taskmaster statuses to those states and store mapping (either by state name or allow user to confirm if names differ) . For MVP, we can assume Linear has “Todo, In Progress, Done, Canceled” and map accordingly, handling “review” and “ready for merge” if present as custom states by name match. Include these IDs in memory or config for use on status updates.
+
+* **Issue Creation Sync** – Implement creation flow: after adding task, call createIssue, store linearIssueId . For subtasks, ensure parentId is used . Write back to tasks.json with IDs. Show confirmation with Linear identifier .
+
+* **Updates Sync** – Implement updateIssue calls for title/description changes (if any CLI commands do this) and for status changes (the main one). Verify moving to Done and other states works by using the correct state IDs .
+
+* **Removal Sync** – Implement archiveIssue on task remove . Also handle if a user directly marks a task “cancelled” status – perhaps treat that similar to remove (archive it) or move to Canceled state if available.
+
+* **Priority Sync** – If Linear priority field available (likely), set it on create/update according to task priority . If not, skip or use label. This is minor effort.
+
+* **Dependency Sync** – Implement relation creation after batch tasks creation. For MVP, it’s enough to handle parse-prd case: after creating all tasks, loop and create relations for dependencies . We can do this synchronously. Also, if there’s a command to add dependency later, support that (Taskmaster might not have explicit command, dependencies are usually set at creation or via PRD parse). We can defer dynamic dependency editing if not straightforward.
+
+* **Labels** – Implement **Taskmaster label** creation (check on first issue creation; if not exists, call Linear API to create label “Taskmaster” with some color) and tagging all issues with it . Implement **language label** (if config enabled) in a basic way: perhaps allow user to specify project language in config, and tag every issue with that. A more dynamic detection can be later. For MVP, even a static label like “JavaScript” if project is JS can be configured by user. Provide mechanism to create needed labels on setup (we can ask “Primary language of this project?” during setup, optionally). Implement **category label**: If we add a \--category option to add-task or parse PRD tasks might have categories (if we parse PRD from template, maybe we can auto label tasks under certain sections as “Feature” vs “Bug” if PRD text indicates). For MVP, we might not fully auto-categorize, but allow user to configure a default category for all tasks or simply label everything “Feature” unless told otherwise. The groundwork for category labels (creating a set of default labels like Feature, Bug) can be laid. Possibly ask during setup which categories to create (or create a standard set by default). This is somewhat extra – if time is short, can be partially done or moved to phase 2\. However, additional requirements emphasize it, so aim to include basic support.
+
+* **Branch Name** – After createIssue, capture branchName from response and store in task (extend task schema). Expose it somehow (at least via task show or maybe just internally for now). Ensure that if branchName depends on GitHub integration, Linear likely generates it instantly on issue creation (with format like \<teamKey\>-\<number\>-\<title-sanitized\>). We trust the API gives it. Include this in any audit sync as needed.
+
+* **CLI Feedback** – Implement the console messages for each sync action (success/failure) in a user-friendly way. Use colors (green for success, yellow/red for warnings). Integrate with Taskmaster’s logging utilities if available (they might have a report.success() or similar).
+
+* **Error Handling & Retries** – As detailed, ensure try/catch around API calls. On failure, mark task unsynced (i.e. don’t set linearIssueId if create failed, so it remains for retry). Implement a basic sync-pending command to attempt to sync any unsynced tasks . Also possibly queue failed updates (like if set-status failed, maybe store that in memory or simply rely on user to run sync-pending which could also recheck statuses by comparing local status vs Linear status via API, though that’s complex for MVP). Perhaps simpler: sync-pending for now just covers creations (the main scenario).
+
+* **Documentation** – Update README or help sections to describe how to use the feature, known limitations (one-way, etc.), and config options. Provide examples so users get started easily.
+
+* **Testing Phase 1** – Before moving to next phase, test the integration in a real scenario: create a dummy Linear workspace or team for dev, run the CLI through all operations and verify Linear reflects them correctly (especially subtask hierarchies, etc.). Also test offline mode (simulate network off) to see error handling and then retry with sync-pending.
+
+Phase 1 is considered complete when a single developer can set up the integration and have all their Taskmaster actions mirrored in Linear without major issues, and when the system is stable for normal use cases. At this point, engineering can release this as an experimental feature if desired.
+
+**Phase 2: Enhanced Sync (Bi-Directional & Additional Integrations)**
+
+*Goal:* Build on the foundation to handle reverse syncing from Linear to Taskmaster and introduce more automation/integrations. (Phase 2 is future work and not part of immediate delivery, but we outline it for completeness.)
+
+Potential Scope of Phase 2:
+
+* **Bi-directional Sync:** Implement the ability to detect changes in Linear and apply them to Taskmaster. This could involve using Linear’s webhooks (Linear can send an HTTP request on issue events) or polling the API periodically for changes. For example, if an issue title or status is changed in Linear, update the corresponding Taskmaster task’s title/status. This is complex because the CLI is not always running; we might need a background daemon or at least a command like task-master sync-pull to fetch updates. Perhaps integration with Linear’s webhook to a local service could be explored (likely out-of-scope for CLI alone – might need running process). Alternatively, on each command, do a quick check of that task’s Linear state to reconcile minor differences. We mentioned conflicts (like PM closes issue while dev still open) – Phase 2 could introduce a mechanism to handle those (maybe when dev tries to update that task, we warn if Linear was closed, etc.). This bi-directional sync ensures true consistency but will require careful design (perhaps Phase 2 PRD).
+
+* **Realtime notifications:** If feasible, integrate Linear’s webhooks to push notify the CLI or a local server about changes, triggering local updates. Possibly beyond CLI scope; maybe a small Electron app or a headless Node script to listen. This would be an enhancement for heavy users wanting full two-way sync.
+
+* **Additional Integrations (Jira, GitHub Issues):** Using the plugin architecture from Phase 1, implement another integration as a separate module. For instance, a **JiraIntegration** that creates issues in Jira with similar mapping. Or a **GitHubIssuesIntegration** for those who prefer GitHub project tracking. This would involve writing similar event handlers using those systems’ APIs. Thanks to Phase 1’s architecture, this is mostly new code with minimal changes to core. The existence of multiple integrations also means we need to support selecting one (config like integrationType: "linear" or enabling multiple simultaneously). Perhaps a dev might want to sync to both Linear and Jira (not common, but possible if different stakeholders use different tools). Our system could even allow multi-target sync (then each event triggers multiple integrations). If we pursue that, ensure things like storing multiple IDs (e.g. linearIssueId and jiraIssueId separate in tasks). Phase 2 might explore that.
+
+* **Integration triggers (beyond issue tracking):** Implementing some of the examples discussed: e.g. a **Git Integration** that responds to task status. One concrete feature: auto-create a Git branch when a task moves to in-progress (and maybe merge when done). Using the branchName from Linear makes this natural: on task-master set-status 5 in-progress, after syncing Linear, the integration could run a local git checkout \-b ENG-47-branch-name. This requires the CLI to interface with Git (maybe just call the shell git, or use a nodegit library). This is an optional “quality of life” feature but demonstrates how Taskmaster can orchestrate other tools. We would do this as a proof-of-concept plugin in Phase 2, possibly disabled by default or opt-in (since not every user will want that automation, but it’s a neat feature).
+
+* **Improved Mapping & Config:** Phase 2 can refine the mapping: allow full customization of status mappings via config (maybe the user can specify name matching if their Linear uses non-standard names), support partial sync toggles (e.g. a user might not want descriptions synced for some reason; unlikely, but config could allow turning off description sync or priority sync). Also, support mapping of additional fields like **due dates** (Taskmaster tasks could have due dates in details maybe, which we could parse and set in Linear).
+
+* **UI Enhancements in CLI:** Possibly update Taskmaster CLI UI (like task-master list) to include Linear info (e.g. show Linear issue numbers or states). For example, listing tasks might show a column “Linear” with either the issue ID or state if differing. This would help the dev see if any task fell out of sync (like “⚠” if not synced). This wasn’t done in Phase 1 to avoid clutter, but Phase 2 might consider it.
+
+* **Bulk Operations & Performance:** If Phase 1 revealed any performance bottlenecks (like parse-prd with 100 tasks being slow), Phase 2 could introduce optimizations. Perhaps use Linear’s GraphQL to create multiple issues in a single request (GraphQL could allow sending a big mutation with multiple createIssue calls in one payload). Or at least run a few in parallel where safe.
+
+* **Testing & Tooling:** Phase 2 would also expand automated tests and maybe integration tests in CI that can run against a dummy Linear (if possible via Linear’s API sandbox or a mock).
+
+In Phase 2, essentially we make the integration more powerful and cover more edge cases and additional tools. It’s about going from a one-way helper to a full two-way sync platform and multi-tool integration.
+
+**Phase 3 and Beyond: Advanced Features** (Ideas, not in immediate scope):
+
+* **AI in Integration:** Using AI to, say, summarize Linear issue comments back to Taskmaster or vice versa, or auto-generate tasks from Linear issues if coming from elsewhere.
+
+* **Team Collaboration Features:** If multiple devs using Taskmaster, maybe integrate with a shared backlog concept (though at that point Linear is the shared backlog).
+
+* **User Interface for Config:** Perhaps a small UI (web or text) to manage integration settings rather than editing JSON.
+
+Currently, our focus is Phase 1, with Phase 2 as planned enhancements. Phase 1 delivers the key functionality needed; Phase 2 ensures the feature is robust and adaptable to more scenarios.
+
+## **Logical Dependency Chain**
+
+When implementing this feature, certain components must be built and working before others can function correctly. Below is the recommended order of development, ensuring that foundational pieces are in place to support subsequent functionality:
+
+1. **Project Setup & Dependency Integration:**
+
+   * Add the Linear SDK (@linear/sdk) to the project and confirm it can be imported and used.
+
+   * Set up a test Linear API key (perhaps a dev’s key) and a sandbox Linear team for development.
+
+   * Verify a simple GraphQL call can be made (e.g. query current user) to ensure connectivity.
+
+   * *Reason:* All sync relies on calling Linear’s API; verifying this early prevents chasing local bugs if the API integration wasn’t working. It’s the foundation for everything else.
+
+2. **Config Schema & Env Loading:**
+
+   * Define how the config will look (e.g. add a “linear” section in config.json) and implement reading/writing of this config.
+
+   * Ensure that Taskmaster can load an API key from .env. Write a trivial function to get process.env.LINEAR\_API\_KEY and test by manually placing a key.
+
+   * *Reason:* Configuration is needed to hold team IDs and key for any API call. This must be in place before we attempt real issue creation. It’s also low-risk to do first and ensures later steps have data (like teamId) to use.
+
+3. **Integration Manager & Event Hook Mechanism:**
+
+   * Implement a basic version of the Integration Manager or decide on direct calls. Perhaps start with direct calls for simplicity, then refactor to a generic manager once one integration path is working.
+
+   * Modify one command (say addTask) to emit an event or call a placeholder function after local op.
+
+   * *Reason:* We need the plumbing in the CLI to hook our code. Starting with one command proves we can intercept at the right place. It sets the stage for other commands to follow the same pattern.
+
+4. **LinearIntegration Module – Issue Creation (Minimal):**
+
+   * Implement the createIssue call and storing of linearIssueId for a new task. Hardcode some values if needed (e.g. use a known teamId, skip description) just to get a simple case working.
+
+   * Integrate this with the addTask hook: run the code after adding a task, and log success.
+
+   * Test by running task-master add-task "Test" and verifying an issue is created in Linear and the tasks.json gets updated with an ID.
+
+   * *Reason:* This delivers the first end-to-end vertical slice: from CLI input to Linear output. It’s the core use case (adding a task). Getting this working early is crucial as it touches all parts: config, API call, file update, output. It helps iron out basic connection and schema issues.
+
+5. **Two-Way ID Write-Back Handling:**
+
+   * Refine the mechanism to update tasks.json with the Linear ID and ensure it’s robust. For example, ensure we open/write file safely.
+
+   * Possibly implement a strategy to avoid double-writing too often (maybe accumulate changes in memory and write once at end of command). But correctness over optimization at this stage.
+
+   * *Reason:* Without saving IDs properly, subsequent updates will break (since they need the ID). So this step secures the idempotency and consistency of data between runs.
+
+6. **Setup Wizard Command:**
+
+   * Implement sync-setup interactive prompts.
+
+   * This should call Linear API to get teams (so by now createIssue was working, but list teams also needed) . Add that function using SDK.
+
+   * Write the gathered info to config and .env.
+
+   * Test by wiping config, running sync-setup, see that config is populated correctly.
+
+   * *Reason:* Before rolling out more commands, making sure a user can configure the integration easily is important. Also, setup uses some Linear API calls (list teams/projects), which further tests our API integration. Doing it now ensures we have teamId for other operations if we didn’t want to hardcode in dev tests.
+
+7. **State Mapping (Basic):**
+
+   * Using the teamId from setup, call API to fetch the team’s workflow states, find the ones named “Todo/In Progress/Done” etc. Store those IDs in the config or in memory.
+
+   * Implement a helper in LinearIntegration like getStateIdForStatus(status) that uses the map.
+
+   * *Reason:* Before implementing status sync, we need the mapping. Better to get it ready so when we do the status change functionality, we have the data. If a particular state (like “In Review”) is missing, decide on fallback now (maybe treat as In Progress). This mapping logic being ready guides the next steps.
+
+8. **Status Update Sync:**
+
+   * Implement handling for set-status (task completion or other statuses). After local change, call updateIssue with appropriate stateId .
+
+   * Test with marking a task done and verifying Linear moves it.
+
+   * Also test intermediate statuses (pending-\>in-progress-\>review if possible). Possibly simulate by manually invoking the integration function with a status.
+
+   * *Reason:* Task completion is the second most important operation after creation. It’s critical to show done tasks in Linear. Doing this next means the basic create-\>complete lifecycle is fully covered.
+
+9. **Subtask Creation Sync:**
+
+   * Implement logic for addSubtask. If converting existing task or adding new, handle both as per design:
+
+     * New subtask: create Linear issue with parentId .
+
+     * Converting existing to subtask: update existing issue’s parentId .
+
+   * Modify Taskmaster’s subtask command to call integration appropriately. For conversion, ensure we still have the Linear ID (should, since it was a top-level task).
+
+   * Test by creating a subtask via CLI and verifying it appears nested in Linear. Also test converting if CLI supports it (if not easily testable, ensure code logic is solid by manual simulation).
+
+   * *Reason:* Many tasks are broken into subtasks, so this extends core functionality to hierarchical cases. It’s easier to implement once basic create is done, since it’s an extension of that.
+
+10. **Task Deletion/Archival Sync:**
+
+    * Implement remove-task hook to call archiveIssue .
+
+    * Test by removing a task and confirming it disappears (archives) in Linear. Possibly use Linear UI to confirm it’s archived.
+
+    * Also implement remove-subtask similarly.
+
+    * *Reason:* Clean-up operations should come after creation and update are done. This prevents orphan issues. It’s straightforward after having ID handling in place.
+
+11. **Priority & Label Sync:**
+
+    * Implement setting priority on createIssue if config says to. Test if the created issue in Linear has correct priority (this might be visible as a flag or icon in Linear UI).
+
+    * Implement label creation for “Taskmaster” and adding it to issues. Test that a new issue in Linear has the label. Might need to call Linear API to create label if not existent (the SDK likely has createLabel).
+
+    * If quick, implement simple language label logic: perhaps add a config field for primaryLanguage, and if set, every issue gets that label (simulate that scenario).
+
+    * Implement category label: For MVP, maybe allow a global category config or a default. Or integrate with parsePRD if the PRD text had sections like “Bugs: …” etc. That might be complex; instead, we might allow the add-task command to accept a flag \--category for user to specify. This requires altering CLI interface a bit. If too much, we can default all tasks to category “Task” or skip category until Phase 2\. Given requirements, at least plan to create some default labels like Feature, Bug in Linear so that structure is ready.
+
+    * *Reason:* These are additional enhancements that can be done after the core sync works. They rely on ability to call createLabel and updateIssue (to add labels). By now we have createIssue and updateIssue working, so adding labels is just another field (the Linear API might accept labelIds in createIssue). If not, we may need a separate call to add label to issue. Either way, do this after main flows are done to avoid distraction from primary tasks.
+
+11.n   Sync Complexity to Linear Story Points
+
+11.n  Sync Blocking Tasks in taskmaster to Linear Marked Tasks to reflect dependencies
+
+12. **Branch Name Fetch:**
+
+    * Modify createIssue call to request branchName in the GraphQL return (the SDK might not return it by default; we might need to query issue data after creation or use a custom GraphQL fragment). Possibly the SDK’s createIssue returns an Issue object that has branchName property populated (since it’s part of Issue schema) .
+
+    * Once retrieved, update the task’s branchName field and save.
+
+    * Test by creating an issue and comparing the branchName string with Linear’s suggested branch in the UI (Linear UI has a copy-branch-name shortcut; maybe we trust it’s correct format).
+
+    * *Reason:* This is a small addition now that createIssue flow is stable. It’s logically after ensuring create flows are good, because branchName is non-critical metadata. Doing it now ensures we don’t forget to include it and we can still adjust if needed.
+
+13. **Manual Sync Commands (sync-pending/audit):**
+
+    * Implement sync-pending to scan tasks.json for tasks without linearIssueId and create issues for them . This leverages much of create logic we wrote, just in a loop without user initiating an add. Mark tasks as synced.
+
+    * Also, maybe implement a simple sync-check or sync-audit command that goes through tasks and verifies if for each linearIssueId we can fetch the issue from Linear (ensuring it exists and perhaps checking status alignment). If a task’s Linear issue is e.g. done while task is not, we could flag it. This is more complex, possibly Phase 2, but maybe implement a minimal check that prints if any task has linearIssueId but Linear API can’t find it (meaning it might have been deleted or the ID is wrong).
+
+    * *Reason:* This increases reliability and user control. Implement after core features are done, since it builds on them. We want to have at least sync-pending in MVP as offline support.
+
+14. **Extensibility Hooks (Skeleton for future):**
+
+    * Clean up the integration manager interface such that adding a new integration would be straightforward. Perhaps document how one would do it. We might not implement a second integration in Phase 1, but we ensure the code isn’t Linear-specific in core (e.g. event names generic, not calling “linearIntegration” directly everywhere but via manager).
+
+    * Optionally, write a stub alternative integration for testing (maybe a dummy logger that just logs events to prove multi integration works).
+
+    * *Reason:* We want to confirm our architecture’s promise that it’s pluggable. Doing a quick dummy plugin test can validate that. It’s done toward end since it’s not user-facing, but good for design validation.
+
+15. **Testing & Bugfixing Round:**
+
+    * Go through various scenarios manually and with any tests: adding multiple tasks rapidly, adding tasks with special characters (does Linear handle those? likely yes), tasks with very long descriptions (maybe needed to test, since GraphQL might have a size limit), tasks with no title (shouldn’t happen due to CLI validation).
+
+    * Test what happens if Linear API key is wrong or expired mid-run.
+
+    * Test turning autoSync off (set autoSync false and see that tasks don’t sync until running sync-pending).
+
+    * Fix any issues uncovered.
+
+    * *Reason:* Ensuring quality before releasing Phase 1\. Better to catch corner cases now.
+
+16. **Documentation & Final Touches:**
+
+    * Write detailed usage instructions, update any CLI help text for new commands.
+
+    * Possibly add a note in Taskmaster’s welcome message or README about “Linear sync available – run sync-setup to enable”.
+
+    * Ensure the PRD diagrams and documentation are updated to match final implementation (for internal coherence).
+
+    * *Reason:* A polished delivery includes making sure users know how to use it and what to expect.
+
+The order above ensures that we start with the simplest path (single task create) and progressively add complexity (subtasks, dependencies, etc.), verifying each layer as we go. For example, there’s no point handling subtasks before basic tasks work; similarly, no point adding labels before issues can be created at all. By following this logical dependency chain, we reduce risk: each step builds on a proven foundation from the previous step. It also means if time or resources run short, we have a usable subset (for instance, if Phase 1 ended at step 10, we’d have core sync minus some bells and whistles but still functional).
+
+Additionally, implementing in this order allows showing incremental progress to stakeholders:
+
+* After step 4, we can demonstrate tasks appearing in Linear.
+
+* After step 8, show that marking done closes issues, etc.
+
+* This iterative validation builds confidence and catches integration problems early.
+
+## **Risks and Mitigations**
+
+Implementing the Taskmaster-to-Linear sync comes with several risks and challenges. We identify these risks and outline mitigation strategies to address them:
+
+* **Risk: API Misuse or Changes** – The integration relies on Linear’s API (via the SDK). If we misinterpret the API or if Linear changes their API, our sync could fail (e.g., fields might be missing or endpoints change). **Mitigation:** We use Linear’s officially supported SDK which should shield us from minor API changes (the SDK will get updates if needed). We will also thoroughly test all API calls during development to ensure we’re using them correctly (especially things like parentId for sub-issues, which we have confirmed via docs) . We will monitor Linear’s developer changelogs for any breaking changes. Additionally, our code will be defensive: if an API call fails or returns unexpected data, we handle it gracefully (not crash, just log) so the user’s workflow isn’t blocked, buying time to release a patch if Linear side changes.
+
+* **Risk: Rate Limiting and Performance Bottlenecks** – As mentioned, if a user adds a large number of tasks at once (for example, parsing a huge PRD into 50+ tasks), we could hit Linear’s rate limits or at least slow down the CLI significantly while making many API calls. **Mitigation:** We will implement basic rate limit handling: the Linear SDK might throw a specific error or include a header when limits are near. We can catch that and either respect a retry-after header or implement a backoff (pause and retry). We’ll also consider batching strategies in the future. For performance, we ensure API calls are done asynchronously after file writes so the CLI UI remains responsive (the user sees tasks added immediately, with maybe a spinner for sync). If needed, we could offload sync to a child process or background thread, but given Node’s single-thread nature for simplicity we’ll handle sequentially for now. In documentation, we can note that extremely large bulk operations might take a bit to sync and advise accordingly. We’ll test with a sizable input to gauge the performance and optimize if needed.
+
+* **Risk: Data Consistency & Duplicate Issues** – There’s a risk of creating duplicate Linear issues for the same Taskmaster task, e.g., if the process is run twice, or if a task already exists on Linear from earlier manual entry. **Mitigation:** We use the linearIssueId stored in each task as the single source of linkage . Our logic always checks: “Does this task have a Linear ID already? If yes, update existing; if no, create new.” That prevents duplicates in normal operation. For the scenario where a developer had manually created some issues before enabling sync, unfortunately our integration will not know about those (no IDs in tasks.json). We call that out as a limitation – the user might end up with duplicates when they enable sync. Our mitigation is offering the initial setup prompt or a dry-run where they could match tasks to existing issues manually or choose not to sync certain tasks. We might also provide an advanced way (not automated) for the user to populate the IDs themselves for already tracked tasks (e.g. a manual mapping file or command sync-link taskId ENG-123). But that’s likely not needed for MVP if communicated. In general, by keeping the mapping of Taskmaster ID ↔ Linear ID persistent in tasks.json, we ensure idempotency of sync actions (no double creates, no updating wrong issue, etc.).
+
+* **Risk: Lost or Corrupted Data (Local or Remote)** – If the tasks.json gets corrupted or Linear returns an error mid-operation, there’s potential for data loss or inconsistency. For example, if tasks.json write fails after we archived a Linear issue, the task might be gone in Linear but still marked active locally. Or vice versa, if we created an issue in Linear but crashed before saving the ID, the task would never get linked (and future sync-pending might create a duplicate). **Mitigation:** We try to order operations to minimize harm: local file is updated first, then remote. This means in the worst case (remote fails), the local data is intact (just lacking a Linear ID or status). If remote succeeds but we fail to save ID locally, we have an orphan issue; to mitigate, we log enough info (like the ENG-47 number) so the user could manually reconcile. We might also implement a recovery command that searches Linear for issues without links. But such corner cases are rare. Taskmaster’s file writes are usually atomic; we will be careful to catch any file write error and if it occurs, perhaps retry or at least alert user to check tasks.json. As another mitigation, we will backup tasks.json before making major changes (Taskmaster often keeps some backup or the user has it in git). The integration on its own doesn’t drastically increase risk of file corruption beyond what Taskmaster already handles, because we use the same writing mechanism.
+
+* **Risk: One-Way Sync Confusion** – Since Phase 1 is one-way, team members might inadvertently create a scenario of “drift”: e.g., someone closes an issue in Linear, but the developer’s Taskmaster doesn’t know and still shows it open. This could cause duplicate work or confusion (“I thought that was done?”). **Mitigation:** We consider this a communication/training and documentation issue in Phase 1\. We will clearly document that the integration currently assumes you make changes in Taskmaster, not directly in Linear . We’ll provide an “audit” command for the dev to check if any differences exist (like maybe listing tasks that are Done in Linear but not in Taskmaster, if they manually run it). We’ll also encourage teams to have a convention: e.g. if PM wants to change something, they inform the dev to do it in Taskmaster or wait for Phase 2\. While not ideal, acknowledging this limitation sets expectations. In code, a partial mitigation: whenever the user runs any sync command or perhaps on start, we could fetch the Linear issues for all tasks and warn if any statuses differ (for example, “Note: Task 5 is marked done in Linear but was pending locally – consider updating it.”). This is a stretch goal for Phase 1 (depending on time). Primarily, we mitigate by focusing Phase 1 on the intended use (source of truth \= Taskmaster).
+
+* **Risk: Multi-User Conflicts** – If multiple developers enable sync on the same Linear project without coordination, they could step on each other (especially if they share a code repo). Example: two devs each have a task ID 7 in their separate tasks.json, both sync to Linear → creates two different issues for “Task 7” which might be totally different tasks. Or if they share tasks.json via git, merges could cause confusion. **Mitigation:** The scope of this feature is a single-user (or single machine) per project . We will clearly state that multi-user use of the *same Taskmaster project* is not supported in Phase 1\. If a team wants multiple people’s tasks in Linear, they should each have their own project or carefully merge tasks. We assume in practice developers manage their own tasks. In case two devs do try it, the result (duplicate tasks with different IDs) is not catastrophic in Linear – just some duplicate issues which can be merged or closed. But we won’t attempt an automated resolution. In future, if we wanted to allow a shared tasks.json, we’d consider locking or ID strategies, but that’s beyond this phase. So the mitigation is setting expectation (one user drives the sync at a time for a given project).
+
+* **Risk: Upstream Taskmaster Changes and Merge Maintenance** – Since we are forking Taskmaster, any updates to Taskmaster could conflict with our changes (especially if Taskmaster itself evolves its task storage or commands). Our added code might become a burden to maintain. **Mitigation:** We designed the integration to be as self-contained as possible (in separate modules, minimal intrusion) . This will reduce merge conflicts when pulling new updates from upstream. We also plan to potentially contribute this integration upstream if it’s broadly useful, which would eliminate the fork maintenance problem. In the meantime, we’ll track Taskmaster’s repository changes; if a significant refactor happens that affects our hooks, we adjust accordingly. The plugin architecture serves as mitigation – e.g., if Taskmaster changes how commands are structured, hopefully our integration manager can still plug in with minimal changes. In worst case, if maintaining the fork becomes too costly, we could re-evaluate strategy (perhaps a different integration method or see if Taskmaster can support plugins officially).
+
+* **Risk: Security of API Key** – Storing an API key locally always carries some risk (especially if the repo is public or the machine compromised). **Mitigation:** We take measures to keep the key secure: use .env (not in version control) , never print the key or send it anywhere except Linear’s API. We also recommend in docs not to share the key or commit it. If multiple environments (like CI) use this, encourage using environment variables rather than hardcoding. Since the scope is local dev, these mitigations are usually enough.
+
+* **Risk: Misuse or Overload of Linear (Abuse cases)** – If someone tried to abuse the integration (e.g., use Taskmaster to spam create 1000 issues, or create extremely large content tasks), it could hit Linear usage limits or clutter their system. **Mitigation:** This is more a user practice issue. We assume normal usage patterns (dev tasks are finite). We don’t hard-limit the number of tasks, but if someone did something extreme, Linear’s own limits might throttle it. We ensure our code can handle a “too many requests” gracefully and maybe inform the user to slow down. And if a user created huge tasks, Linear might truncate descriptions after some size – not much we can do beyond noting any Linear constraints (like max description length, if any).
+
+* **Risk: Incorrect Mapping (Statuses or IDs)** – If our state mapping is wrong (e.g., we map “done” to the wrong state ID), the sync will put issues in wrong column or error if state not found. **Mitigation:** We test with a typical Linear setup to get those mappings right. We also retrieve actual state IDs from the team to avoid hardcoding any ID. If a user uses a custom workflow (like renamed “Done” to “Completed”), our naive name-match might fail. To mitigate, we allow the user to override mapping in config or the setup wizard might list the states and ask which corresponds to “done” etc. In MVP, we might assume conventional names but at least log a warning if a needed state name isn’t found (“No Linear state matching ‘Done’ found, please update your config stateMapping”). That prompts the user to fix it. This reduces the chance of silent incorrect mapping.
+
+* **Risk: Label Proliferation or Color Issues** – Automatically creating labels (Taskmaster, languages, categories) could lead to a large number of labels in Linear, possibly cluttering or hitting some limit. Also, picking colors to match languages might not exactly match expectations. **Mitigation:** We make label sync optional/configurable . The default “Taskmaster” label is singular and fine. Language labels – we will likely only create a handful relevant to the project (maybe one or two languages). Category labels – we might create, say, 5-6 defaults. This is within reasonable bounds. We’ll use Linear’s API to create labels only if they don’t exist, and we’ll use consistent naming to avoid duplicates. If a user really doesn’t want labels, they can turn them off. As for colors, we can pull from a known mapping (maybe GitHub’s language color map is publicly available in that GitHub repo we saw). It’s a minor detail; if the color isn’t exact, it’s not breaking anything – just a cosmetic thing we can adjust via config if needed (we could allow user to specify hex in config if they care).
+
+* **Risk: Unforeseen Taskmaster Behaviors** – Taskmaster might have features we haven’t deeply considered. For example, it has an “expand tasks with AI” command that could generate and add multiple tasks and subtasks in one go. We have considered parse-prd (similar multi-add) and dependency edges. But there might be others (like a “move-task” command to reorder or a “merge tasks” command, etc.). If those exist and we don’t hook them, the sync could miss events. **Mitigation:** We combed through Taskmaster’s commands (based on PRD v1 and code) to identify all relevant ones . We believe we’ve covered creation, update, completion, deletion, plus parse-prd bulk. If a command is purely local (like listing tasks or analyzing complexity), it doesn’t need sync. If a new command is added later (like “duplicate task” or something), we’d need to update integration then. As a safety net, if any tasks are added/changed outside our hooks, they will lack linearIssueId, so at least they won’t cause wrong updates – they just won’t sync until user notices and runs sync-pending. So the failure mode is missing an update rather than breaking something. We can live with that as we’ll continuously update integration with new Taskmaster features as needed.
+
+* **Risk: Timeline and Scope Creep** – There is a lot in scope (especially with additional requirements like labels, complexity, etc.). There’s a risk of taking on too much in Phase 1 and not delivering a stable product on time. **Mitigation:** We carefully prioritized core functionality in the development plan (the logical dependency chain ensures the basics are done first, and optional features like advanced labeling or Git branch automation come later or in Phase 2). If time becomes constrained, we will cut or postpone lower priority features (for example, if complexity-to-estimate mapping isn’t ready, we can disable it by default and document it as coming soon). The key is to deliver a working one-way sync; everything else is additive. We also will conduct frequent reviews during implementation to avoid spending excessive time on a gold-plated solution where a simpler one suffices (e.g. making the plugin system dynamic vs a simpler static implementation with an eye for future improvements).
+
+In summary, while there are several risks, our approach is to mitigate them through clear planning, robust error handling, user guidance, and phased implementation. By doing so, we aim to ensure that the Taskmaster-Linear sync feature is delivered as a reliable, secure, and user-friendly tool, and any potential issues either have minimal impact or are clearly communicated to the user with ways to address them.
+
+## **Appendix**
+
+**Appendix A: Example Config File after Setup**
+
+After running the setup wizard, a project’s Taskmaster config (.taskmaster/config.json) might contain:
+
+```
+{
+  "linear": {
+    "teamId": "6b7e9dce-1234-5678-90ab-cdef12345678",
+    "teamName": "Engineering", 
+    "projectId": null,
+    "autoSync": true,
+    "stateMapping": {
+      "pending": "todo",       // using state keys or IDs
+      "in-progress": "in progress",
+      "review": "in review",
+      "done": "done",
+      "cancelled": "canceled"
+    },
+    "useTaskmasterLabel": true,
+    "useLanguageLabels": true,
+    "language": "Python",
+    "useCategoryLabels": true,
+    "categories": ["Feature", "Bug", "Chore"]
+  }
+}
+```
+
+(Note: The actual format might use state IDs instead of names for precision, e.g. "done": "f98a12...state-id". The above is illustrative.)
+
+**Appendix B: Pseudo-code for Integration Hooks**
+
+Below is a simplified pseudo-code representation of how Taskmaster’s event hooks might call the Linear integration (for developers’ reference):
+
+```
+// In Taskmaster's addTask command handler
+const task = createLocalTask(title, desc, ...);
+writeTasksFile(tasks);
+if (config.linear && config.linear.autoSync) {
+    try {
+       const issue = await linearClient.createIssue({
+           teamId: config.linear.teamId,
+           title: task.title,
+           description: formatDescription(task),
+           parentId: null,
+           priority: mapPriority(task.priority)
+       });
+       task.linearIssueId = issue.id;
+       task.linearIssueNumber = issue.identifier;
+       task.branchName = issue.branchName;
+       writeTasksFile(tasks);  // update file with new fields
+       console.log(chalk.green(`✓ Created Linear issue ${issue.identifier}`));
+    } catch (err) {
+       console.error(chalk.yellow(`⚠ Linear sync failed: ${err.message}`));
+    }
+}
+```
+
+```
+// In setStatus command handler
+updateTaskStatusLocal(taskId, newStatus);
+writeTasksFile(tasks);
+if (config.linear && config.linear.autoSync) {
+    const issueId = tasks[taskId].linearIssueId;
+    if (issueId) {
+       try {
+          const stateId = config.linear.stateMapping[newStatus];
+          await linearClient.updateIssue(issueId, { stateId });
+          console.log(chalk.green(`✓ Linear issue updated to ${newStatus}`));
+       } catch (err) {
+          console.error(chalk.yellow(`⚠ Failed to update Linear issue: ${err.message}`));
+       }
+    }
+}
+```
+
+(The above pseudo-code omits some details like caching stateId or handling deferred status, but illustrates the flow.)
+
+**Appendix C: Sequence Diagram for “Add Task” Flow**
+
+For completeness, a sequence diagram (adapted from PRD v1, now including branch name storage) is shown below:
+
+```
+sequenceDiagram
+    participant Dev as Developer (CLI)
+    participant CLI as Taskmaster CLI
+    participant File as tasks.json (Local)
+    participant Linear as Linear API
+
+    Dev->>CLI: task-master add-task "New Feature"
+    CLI->>File: Write new task (id=7, status=pending, etc.)
+    CLI->>Linear: issueCreate(title="New Feature", teamId=TEAM) 
+    alt API call succeeds
+        Linear-->>CLI: returns issue {id, identifier="ENG-47", branchName="eng-47-new-feature"}
+        CLI->>File: Update task 7 with linearIssueId and branchName
+        CLI->>Dev: "Task 7 created (synced to Linear as ENG-47)"
+    else API call fails
+        Linear-->>CLI: returns error
+        CLI->>Dev: "Task 7 created locally (Linear sync failed: <error>)"
+    end
+```
+
+This diagram shows that even if Linear sync fails, the task is created locally, preserving user workflow .
+
+**Appendix D: Linear Workflow States Example**
+
+If a Linear team has custom states, an example query result might be:
+
+```
+Team "Engineering" States:
+- Backlog (id: aaa-bbb-111)
+- In Progress (id: ccc-ddd-222)
+- In Review (id: eee-fff-333)
+- Done (id: ggg-hhh-444)
+- Canceled (id: iii-jjj-555)
+```
+
+Our mapping in config would use these IDs to ensure correct updates. For instance, when setting a task to done, we use stateId=ggg-hhh-444 in the API call .
+
+**Appendix E: Potential Enhancements Table**
+
+Some enhancements slated for future (Phase 2\) and their benefits:
+
+| Enhancement | Description | Benefit |
+| ----- | ----- | ----- |
+| Two-way sync | Pull changes from Linear to Taskmaster (via webhook or pull cmd) | Prevents divergence when PMs edit issues; Taskmaster becomes true mirror. |
+| Additional integrations | E.g. JiraIntegration, GitHubIntegration using same framework | Makes Taskmaster a multi-tool hub, broader user base appeal. |
+| Git branch auto-create | On task start, create/switch git branch (using branchName) | Saves dev time, enforces branch naming consistency. |
+| Cycle/Sprint support | E.g. auto-assign new issues to current Linear cycle if any | Integrates with team’s sprint process seamlessly. |
+| Complexity \-\> Estimate | Refine AI complexity mapping to Linear estimates, possibly feed actual times back to improve estimates | Better project planning; devs see story points in Linear reflect actual complexity. |
+| UI feedback in CLI | Show Linear status in task-master list, or a flag for tasks not synced | Improves transparency for dev, quickly resolve sync issues. |
+
+Each of these would be tackled after the core is solid, as outlined in the roadmap.
+

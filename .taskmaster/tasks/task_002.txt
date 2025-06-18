@@ -1,16 +1,11 @@
 # Task ID: 2
-# Title: Develop Command Line Interface Foundation
-# Status: done
+# Title: Extend Taskmaster Config Schema for Linear Integration
+# Status: pending
 # Dependencies: 1
 # Priority: high
-# Description: Create the basic CLI structure using Commander.js with command parsing and help documentation.
+# Description: Define and implement the configuration structure for Linear integration settings
 # Details:
-Implement the CLI foundation including:
-- Set up Commander.js for command parsing
-- Create help documentation for all commands
-- Implement colorized console output for better readability
-- Add logging system with configurable levels
-- Handle global options (--help, --version, --file, --quiet, --debug, --json)
+Extend Taskmaster's config.json to include a 'linear' section with fields: teamId, projectId, autoSync, stateMapping, useTaskmasterLabel, useLanguageLabels, useCategoryLabels. Implement config reading/writing utilities that can safely update the JSON structure without corrupting existing settings.
 
 # Test Strategy:
-Test each command with various parameters to ensure proper parsing. Verify help documentation is comprehensive and accurate. Test logging at different verbosity levels.
+Test config file creation, reading, and updating. Verify that malformed JSON is handled gracefully and that config changes persist correctly across CLI sessions.

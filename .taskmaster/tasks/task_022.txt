@@ -1,77 +1,37 @@
 # Task ID: 22
-# Title: Create Comprehensive Test Suite for Task Master CLI
-# Status: done
+# Title: Implement Rate Limiting and Performance Optimization
+# Status: pending
 # Dependencies: 21
-# Priority: high
-# Description: Develop a complete testing infrastructure for the Task Master CLI that includes unit, integration, and end-to-end tests to verify all core functionality and error handling.
+# Priority: medium
+# Description: Add rate limiting protection and optimize API call performance
 # Details:
-Implement a comprehensive test suite using Jest as the testing framework. The test suite should be organized into three main categories:
-
-1. Unit Tests:
-   - Create tests for all utility functions and core logic components
-   - Test task creation, parsing, and manipulation functions
-   - Test data storage and retrieval functions
-   - Test formatting and display functions
-
-2. Integration Tests:
-   - Test all CLI commands (create, expand, update, list, etc.)
-   - Verify command options and parameters work correctly
-   - Test interactions between different components
-   - Test configuration loading and application settings
-
-3. End-to-End Tests:
-   - Test complete workflows (e.g., creating a task, expanding it, updating status)
-   - Test error scenarios and recovery
-   - Test edge cases like handling large numbers of tasks
-
-Implement proper mocking for:
-- Claude API interactions (using Jest mock functions)
-- File system operations (using mock-fs or similar)
-- User input/output (using mock stdin/stdout)
-
-Ensure tests cover both successful operations and error handling paths. Set up continuous integration to run tests automatically. Create fixtures for common test data and scenarios. Include test coverage reporting to identify untested code paths.
+Implement rate limiting detection and backoff strategies for Linear API calls. Optimize bulk operations to avoid hitting rate limits. Add progress indicators for long-running sync operations and implement efficient batching where possible.
 
 # Test Strategy:
-Verification will involve:
-
-1. Code Review:
-   - Verify test organization follows the unit/integration/end-to-end structure
-   - Check that all major functions have corresponding tests
-   - Verify mocks are properly implemented for external dependencies
-
-2. Test Coverage Analysis:
-   - Run test coverage tools to ensure at least 80% code coverage
-   - Verify critical paths have 100% coverage
-   - Identify any untested code paths
-
-3. Test Quality Verification:
-   - Manually review test cases to ensure they test meaningful behavior
-   - Verify both positive and negative test cases exist
-   - Check that tests are deterministic and don't have false positives/negatives
-
-4. CI Integration:
-   - Verify tests run successfully in the CI environment
-   - Ensure tests run in a reasonable amount of time
-   - Check that test failures provide clear, actionable information
-
-The task will be considered complete when all tests pass consistently, coverage meets targets, and the test suite can detect intentionally introduced bugs.
+Test with rapid task creation to trigger rate limiting. Verify backoff strategies work correctly. Test performance with large numbers of tasks and ensure reasonable response times.
 
 # Subtasks:
-## 1. Set Up Jest Testing Environment [done]
+## 1. Detect rate limit responses [pending]
 ### Dependencies: None
-### Description: Configure Jest for the project, including setting up the jest.config.js file, adding necessary dependencies, and creating the initial test directory structure. Implement proper mocking for Claude API interactions, file system operations, and user input/output. Set up test coverage reporting and configure it to run in the CI pipeline.
+### Description: Implement detection mechanisms for rate limit responses from APIs including HTTP status codes (429, 503), response headers (X-RateLimit-*, Retry-After), and response body patterns to identify when rate limits are hit
 ### Details:
+Create a rate limit detector that monitors HTTP responses for common rate limiting indicators such as 429 Too Many Requests status codes, rate limit headers like X-RateLimit-Remaining, X-RateLimit-Reset, and Retry-After headers. Include parsing of response bodies for rate limit messages and implement logging for rate limit events.
 
-
-## 2. Implement Unit Tests for Core Components [done]
+## 2. Implement backoff strategies [pending]
 ### Dependencies: 22.1
-### Description: Create a comprehensive set of unit tests for all utility functions, core logic components, and individual modules of the Task Master CLI. This includes tests for task creation, parsing, manipulation, data storage, retrieval, and formatting functions. Ensure all edge cases and error scenarios are covered.
+### Description: Develop exponential backoff, linear backoff, and jittered backoff algorithms to handle rate limit scenarios gracefully with configurable parameters for retry attempts, base delay, and maximum wait times
 ### Details:
+Create multiple backoff strategy implementations including exponential backoff with configurable base delay and multiplier, linear backoff with fixed increments, and jittered backoff to prevent thundering herd problems. Include retry logic with maximum attempt limits and respect for Retry-After headers when provided by the API.
 
-
-## 3. Develop Integration and End-to-End Tests [deferred]
-### Dependencies: 22.1, 22.2
-### Description: Create integration tests that verify the correct interaction between different components of the CLI, including command execution, option parsing, and data flow. Implement end-to-end tests that simulate complete user workflows, such as creating a task, expanding it, and updating its status. Include tests for error scenarios, recovery processes, and handling large numbers of tasks.
+## 3. Add request batching where possible [pending]
+### Dependencies: 22.1
+### Description: Implement request batching mechanisms to group multiple API calls into single requests where supported by the API, including batch size optimization and error handling for partial batch failures
 ### Details:
+Design a batching system that can group similar API requests into batches based on API capabilities. Include configurable batch sizes, timeout handling for batch requests, and logic to handle partial failures within batches. Implement fallback to individual requests when batching fails.
 
+## 4. Create progress indicators for long operations [pending]
+### Dependencies: 22.2, 22.3
+### Description: Develop progress tracking and user feedback mechanisms for long-running operations including progress bars, estimated time remaining, and status updates for batch processing and rate-limited operations
+### Details:
+Build a progress indication system that tracks completion percentage, estimated time remaining, and current operation status. Include visual progress bars for UI applications, console progress indicators for CLI tools, and callback mechanisms for custom progress handling. Integrate with batching and backoff systems to provide accurate progress updates.
 

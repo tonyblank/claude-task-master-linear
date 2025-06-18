@@ -13,10 +13,11 @@ import {
  * Move a task or subtask to a new position
  * @param {Object} args - Function arguments
  * @param {string} args.tasksJsonPath - Explicit path to the tasks.json file
- * @param {string} args.sourceId - ID of the task/subtask to move (e.g., '5' or '5.2')
- * @param {string} args.destinationId - ID of the destination (e.g., '7' or '7.3')
+ * @param {string} args.sourceId - ID of the task/subtask to move (e.g., '5' or '5.2' or '5,6,7')
+ * @param {string} args.destinationId - ID of the destination (e.g., '7' or '7.3' or '7,8,9')
  * @param {string} args.file - Alternative path to the tasks.json file
  * @param {string} args.projectRoot - Project root directory
+ * @param {boolean} args.generateFiles - Whether to regenerate task files after moving (default: true)
  * @param {Object} log - Logger object
  * @returns {Promise<{success: boolean, data?: Object, error?: Object}>}
  */
@@ -64,35 +65,48 @@ export async function moveTaskDirect(args, log, context = {}) {
 		// Enable silent mode to prevent console output during MCP operation
 		enableSilentMode();
 
-		// Call the core moveTask function, always generate files
-		const result = await moveTask(
-			tasksPath,
-			args.sourceId,
-			args.destinationId,
-			true
-		);
+		try {
+			// Call the core moveTask function with file generation control
+			const generateFiles = args.generateFiles !== false; // Default to true
+			const result = await moveTask(
+				tasksPath,
+				args.sourceId,
+				args.destinationId,
+				generateFiles,
+				{
+					projectRoot: args.projectRoot,
+					tag: args.tag
+				}
+			);
 
-		// Restore console output
-		disableSilentMode();
+			return {
+				success: true,
+				data: {
+					...result,
+					message: `Successfully moved task/subtask ${args.sourceId} to ${args.destinationId}`
+				}
+			};
+		} catch (error) {
+			log.error(`Failed to move task: ${error.message}`);
 
-		return {
-			success: true,
-			data: {
-				movedTask: result.movedTask,
-				message: `Successfully moved task/subtask ${args.sourceId} to ${args.destinationId}`
-			}
-		};
+			return {
+				success: false,
+				error: {
+					message: error.message,
+					code: 'MOVE_TASK_ERROR'
+				}
+			};
+		} finally {
+			// Ensure silent mode is always restored regardless of how the function exits
+			disableSilentMode();
+		}
 	} catch (error) {
-		// Restore console output in case of error
-		disableSilentMode();
-
-		log.error(`Failed to move task: ${error.message}`);
-
+		log.error(`Error in moveTaskDirect: ${error.message}`);
 		return {
 			success: false,
 			error: {
 				message: error.message,
-				code: 'MOVE_TASK_ERROR'
+				code: 'MOVE_TASK_SETUP_ERROR'
 			}
 		};
 	}
