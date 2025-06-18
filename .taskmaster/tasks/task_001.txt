@@ -1,16 +1,11 @@
 # Task ID: 1
-# Title: Implement Task Data Structure
-# Status: done
+# Title: Setup Project Dependencies and Linear SDK Integration
+# Status: pending
 # Dependencies: None
 # Priority: high
-# Description: Design and implement the core tasks.json structure that will serve as the single source of truth for the system.
+# Description: Add Linear SDK to project dependencies and verify basic API connectivity
 # Details:
-Create the foundational data structure including:
-- JSON schema for tasks.json
-- Task model with all required fields (id, title, description, status, dependencies, priority, details, testStrategy, subtasks)
-- Validation functions for the task model
-- Basic file system operations for reading/writing tasks.json
-- Error handling for file operations
+Install @linear/sdk package via npm. Create a test script to verify Linear API connectivity using a development API key. Test basic GraphQL queries like fetching current user to ensure the SDK is properly configured and can communicate with Linear's API.
 
 # Test Strategy:
-Verify that the tasks.json structure can be created, read, and validated. Test with sample data to ensure all fields are properly handled and that validation correctly identifies invalid structures.
+Create a simple test that instantiates LinearClient with a test API key and makes a basic query. Verify the response is valid and no connection errors occur.

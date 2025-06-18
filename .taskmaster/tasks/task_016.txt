@@ -1,56 +1,37 @@
 # Task ID: 16
-# Title: Create Configuration Management System
-# Status: done
-# Dependencies: 1
-# Priority: high
-# Description: Implement robust configuration handling with environment variables and .env files.
+# Title: Implement Category Label System
+# Status: pending
+# Dependencies: 15
+# Priority: low
+# Description: Create and manage category labels for task types (Feature, Bug, Chore, etc.)
 # Details:
-Build configuration management including:
-- Environment variable handling
-- .env file support
-- Configuration validation
-- Sensible defaults with overrides
-- Create .env.example template
-- Add configuration documentation
-- Implement secure handling of API keys
+Implement category detection and labeling system with default categories: Feature, Bug, Chore, Documentation, Testing, Research, Optimization. Allow configuration of custom categories and automatic category assignment based on task content or manual specification.
 
 # Test Strategy:
-Test configuration loading from various sources (environment variables, .env files). Verify that validation correctly identifies invalid configurations. Test that defaults are applied when values are missing.
+Test category assignment for different types of tasks. Verify category labels are created in Linear and properly applied. Test custom category configuration and label creation.
 
 # Subtasks:
-## 1. Implement Environment Variable Loading [done]
+## 1. Define default category set and colors [pending]
 ### Dependencies: None
-### Description: Create a module that loads environment variables from process.env and makes them accessible throughout the application. Implement a hierarchical structure for configuration values with proper typing. Include support for required vs. optional variables and implement a validation mechanism to ensure critical environment variables are present.
+### Description: Establish a comprehensive set of default issue categories with associated color schemes for visual identification in Linear
 ### Details:
+Create a predefined list of common issue categories (e.g., Bug, Feature, Enhancement, Documentation, Security, Performance) with corresponding hex color codes. Define category hierarchy and naming conventions. Document category descriptions and usage guidelines.
 
-
-## 2. Implement .env File Support [done]
+## 2. Implement category detection/assignment logic [pending]
 ### Dependencies: 16.1
-### Description: Add support for loading configuration from .env files using dotenv or a similar library. Implement file detection, parsing, and merging with existing environment variables. Handle multiple environments (.env.development, .env.production, etc.) and implement proper error handling for file reading issues.
+### Description: Develop intelligent algorithms to automatically detect and assign appropriate categories to issues based on content analysis
 ### Details:
+Build keyword matching, pattern recognition, and machine learning models to analyze issue titles, descriptions, and metadata. Implement confidence scoring system for category assignments. Create fallback mechanisms for ambiguous cases and manual override capabilities.
 
-
-## 3. Implement Configuration Validation [done]
-### Dependencies: 16.1, 16.2
-### Description: Create a validation system for configuration values using a schema validation library like Joi, Zod, or Ajv. Define schemas for all configuration categories (API keys, file paths, feature flags, etc.). Implement validation that runs at startup and provides clear error messages for invalid configurations.
+## 3. Create category labels in Linear [pending]
+### Dependencies: 16.1
+### Description: Set up the defined category labels within Linear's label management system with proper configuration
 ### Details:
+Use Linear API to programmatically create category labels with assigned colors. Configure label properties, permissions, and visibility settings. Establish label naming conventions and organize labels in Linear's interface for easy management.
 
-
-## 4. Create Configuration Defaults and Override System [done]
-### Dependencies: 16.1, 16.2, 16.3
-### Description: Implement a system of sensible defaults for all configuration values with the ability to override them via environment variables or .env files. Create a unified configuration object that combines defaults, .env values, and environment variables with proper precedence. Implement a caching mechanism to avoid repeated environment lookups.
+## 4. Add custom category configuration [pending]
+### Dependencies: 16.2, 16.3
+### Description: Implement user interface and backend functionality to allow customization of category sets and detection rules
 ### Details:
-
-
-## 5. Create .env.example Template [done]
-### Dependencies: 16.1, 16.2, 16.3, 16.4
-### Description: Generate a comprehensive .env.example file that documents all supported environment variables, their purpose, format, and default values. Include comments explaining the purpose of each variable and provide examples. Ensure sensitive values are not included but have clear placeholders.
-### Details:
-
-
-## 6. Implement Secure API Key Handling [done]
-### Dependencies: 16.1, 16.2, 16.3, 16.4
-### Description: Create a secure mechanism for handling sensitive configuration values like API keys. Implement masking of sensitive values in logs and error messages. Add validation for API key formats and implement a mechanism to detect and warn about insecure storage of API keys (e.g., committed to git). Add support for key rotation and refresh.
-### Details:
-
+Build configuration UI for adding, editing, and removing custom categories. Implement validation for custom category rules and color selections. Create import/export functionality for category configurations and provide API endpoints for programmatic category management.
 

@@ -1,49 +1,43 @@
 # Task ID: 11
-# Title: Implement Batch Operations
-# Status: done
-# Dependencies: 3
+# Title: Implement Subtask Creation and Hierarchy Sync
+# Status: pending
+# Dependencies: 10
 # Priority: medium
-# Description: Add functionality for performing operations on multiple tasks simultaneously.
+# Description: Add support for syncing Taskmaster subtasks as Linear sub-issues
 # Details:
-Create batch operations including:
-- Implement multi-task status updates
-- Add bulk subtask generation
-- Create task filtering and querying capabilities
-- Implement advanced dependency management
-- Add batch prioritization
-- Create commands for operating on filtered task sets
+Implement subtask creation sync using Linear's parentId field to create hierarchical issue relationships. Handle both new subtask creation and conversion of existing tasks to subtasks. Ensure parent-child relationships are properly maintained in Linear when tasks are restructured.
 
 # Test Strategy:
-Test batch operations with various filters and operations. Verify that operations are applied correctly to all matching tasks. Test with large task sets to ensure performance.
+Test creating subtasks under existing tasks. Verify Linear displays proper parent-child relationships. Test converting existing tasks to subtasks and ensure Linear relationships are updated correctly.
 
 # Subtasks:
-## 1. Implement Multi-Task Status Update Functionality [done]
-### Dependencies: 11.3
-### Description: Create a command-line interface command that allows users to update the status of multiple tasks simultaneously. Implement the backend logic to process batch status changes, validate the requested changes, and update the tasks.json file accordingly. The implementation should include options for filtering tasks by various criteria (ID ranges, status, priority, etc.) and applying status changes to the filtered set.
-### Details:
-
-
-## 2. Develop Bulk Subtask Generation System [done]
-### Dependencies: 11.3, 11.4
-### Description: Create functionality to generate multiple subtasks across several parent tasks at once. This should include a command-line interface that accepts filtering parameters to select parent tasks and either a template for subtasks or an AI-assisted generation option. The system should validate parent tasks, generate appropriate subtasks with proper ID assignments, and update the tasks.json file.
-### Details:
-
-
-## 3. Implement Advanced Task Filtering and Querying [done]
+## 1. Detect parent-child relationships in tasks [pending]
 ### Dependencies: None
-### Description: Create a robust filtering and querying system that can be used across all batch operations. Implement a query syntax that allows for complex filtering based on task properties, including status, priority, dependencies, ID ranges, and text search within titles and descriptions. Design the system to be reusable across different batch operation commands.
+### Description: Implement logic to identify and track hierarchical relationships between tasks, including detection of existing parent-child structures and validation of relationship integrity
 ### Details:
+Create algorithms to traverse task structures, identify parent-child links, detect orphaned tasks, and validate relationship consistency. Include methods to query task hierarchy depth and sibling relationships.
 
-
-## 4. Create Advanced Dependency Management System [done]
-### Dependencies: 11.3
-### Description: Implement batch operations for managing dependencies between tasks. This includes commands for adding, removing, and updating dependencies across multiple tasks simultaneously. The system should validate dependency changes to prevent circular dependencies, update the tasks.json file, and regenerate task files to reflect the changes.
+## 2. Implement subtask creation with parentId [pending]
+### Dependencies: 11.1
+### Description: Develop functionality to create new subtasks with proper parent task references, including validation and automatic hierarchy establishment
 ### Details:
+Build subtask creation API that accepts parentId parameter, validates parent task existence, establishes bidirectional relationships, and updates parent task metadata to reflect new child tasks.
 
-
-## 5. Implement Batch Task Prioritization and Command System [done]
-### Dependencies: 11.3
-### Description: Create a system for batch prioritization of tasks and a command framework for operating on filtered task sets. This includes commands for changing priorities of multiple tasks at once and a generic command execution system that can apply custom operations to filtered task sets. The implementation should include a plugin architecture that allows for extending the system with new batch operations.
+## 3. Handle task-to-subtask conversions [pending]
+### Dependencies: 11.1, 11.2
+### Description: Create mechanisms to convert existing standalone tasks into subtasks of other tasks, managing the restructuring of task hierarchies
 ### Details:
+Implement conversion logic that reassigns task parentage, updates all affected relationships, preserves task data integrity, and handles cascading updates to dependent tasks and references.
 
+## 4. Maintain hierarchy consistency [pending]
+### Dependencies: 11.1, 11.2, 11.3
+### Description: Establish validation rules and automated checks to ensure task hierarchy remains consistent during all operations, preventing circular dependencies and orphaned tasks
+### Details:
+Create validation functions for circular dependency detection, orphan task prevention, hierarchy depth limits, and automated consistency repair mechanisms. Include transaction rollback capabilities for failed operations.
+
+## 5. Test complex nesting scenarios [pending]
+### Dependencies: 11.1, 11.2, 11.3, 11.4
+### Description: Develop comprehensive test suite covering deep nesting, bulk operations, edge cases, and performance testing for hierarchical task management
+### Details:
+Create test cases for multi-level nesting (5+ levels deep), bulk task conversions, concurrent hierarchy modifications, error recovery scenarios, and performance benchmarks for large task hierarchies (1000+ tasks).
 

@@ -1,18 +1,11 @@
 # Task ID: 3
-# Title: Implement Basic Task Operations
-# Status: done
-# Dependencies: 1
+# Title: Implement Environment Variable Loading for API Key
+# Status: pending
+# Dependencies: 2
 # Priority: high
-# Description: Create core functionality for managing tasks including listing, creating, updating, and deleting tasks.
+# Description: Setup secure API key storage and loading mechanism using environment variables
 # Details:
-Implement the following task operations:
-- List tasks with filtering options
-- Create new tasks with required fields
-- Update existing task properties
-- Delete tasks
-- Change task status (pending/done/deferred)
-- Handle dependencies between tasks
-- Manage task priorities
+Ensure Taskmaster loads .env files on startup and can access LINEAR_API_KEY from process.env. Implement validation to check if the API key is present and valid format. Create error handling for missing or invalid API keys with clear user guidance.
 
 # Test Strategy:
-Test each operation with valid and invalid inputs. Verify that dependencies are properly tracked and that status changes are reflected correctly in the tasks.json file.
+Test with valid and invalid API keys. Verify that missing .env file or missing LINEAR_API_KEY variable produces appropriate error messages without exposing sensitive information.
