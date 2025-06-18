@@ -1,6 +1,6 @@
 ---
-description: 
-globs: 
+description: Guidelines for implementing utility functions and helper modules in the TaskMaster codebase
+globs: ["scripts/modules/utils/**", "mcp-server/src/utils/**", "**/*utils*"] 
 alwaysApply: false
 ---
 # Utility Function Guidelines

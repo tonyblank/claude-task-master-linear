@@ -86,7 +86,7 @@ Task Master now uses a **tagged task lists system** for multi-context task manag
   const tasksData = readJSON(tasksPath);
   const currentTag = getCurrentTag() || 'master';
   const tasks = getTasksForTag(tasksData, currentTag);
-  const highestId = Math.max(...tasks.map(t => t.id));
+  const highestId = tasks.length > 0 ? Math.max(...tasks.map(t => t.id)) : 0;
   const nextTaskId = highestId + 1;
   ```
 
@@ -289,6 +289,10 @@ Task Master now uses a **tagged task lists system** for multi-context task manag
     
     // Silent migration for tasks.json files
     if (data.tasks && Array.isArray(data.tasks) && !data.master && isTasksFile) {
+      // Create backup before migration
+      const backupPath = `${filepath}.backup.${Date.now()}`;
+      fs.writeFileSync(backupPath, JSON.stringify(data, null, 2));
+      
       const migratedData = {
         master: {
           tasks: data.tasks

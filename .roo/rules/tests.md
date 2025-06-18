@@ -5,7 +5,7 @@ globs: "**/*.test.js,tests/**/*"
 
 # Testing Guidelines for Task Master CLI
 
-*Note:* Never use asynchronous operations in tests. Always mock tests properly based on the way the tested functions are defined and used. Do not arbitrarily create tests. Based them on the low-level details and execution of the underlying code being tested. 
+*Note:* Properly handle asynchronous operations in tests by mocking external dependencies while preserving async/await patterns for realistic API testing. Always mock tests properly based on the way the tested functions are defined and used. Do not arbitrarily create tests. Based them on the low-level details and execution of the underlying code being tested. 
 
 ## Test Organization Structure
 

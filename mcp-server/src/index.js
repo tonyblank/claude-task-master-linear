@@ -67,6 +67,13 @@ class TaskMasterMCPServer {
 
 		// Determine transport type and configuration based on environment
 		const transportType = process.env.MCP_TRANSPORT || 'stdio';
+		const validTransports = ['stdio', 'tcp'];
+		if (!validTransports.includes(transportType)) {
+			this.logger.error(
+				`Invalid transport type: ${transportType}. Valid options: ${validTransports.join(', ')}`
+			);
+			throw new Error(`Invalid MCP_TRANSPORT: ${transportType}`);
+		}
 		const port = process.env.MCP_PORT || 3000;
 
 		let serverConfig = {
@@ -74,11 +81,16 @@ class TaskMasterMCPServer {
 		};
 
 		if (transportType === 'tcp') {
+			const parsedPort = parseInt(port);
+			if (isNaN(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+				throw new Error(`Invalid port number: ${port}`);
+			}
+
 			serverConfig = {
 				...serverConfig,
 				transportType: 'httpStream',
 				httpStream: {
-					port: parseInt(port)
+					port: parsedPort
 				}
 			};
 			this.logger.info(
