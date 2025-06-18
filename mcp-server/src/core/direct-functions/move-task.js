@@ -65,40 +65,48 @@ export async function moveTaskDirect(args, log, context = {}) {
 		// Enable silent mode to prevent console output during MCP operation
 		enableSilentMode();
 
-		// Call the core moveTask function with file generation control
-		const generateFiles = args.generateFiles !== false; // Default to true
-		const result = await moveTask(
-			tasksPath,
-			args.sourceId,
-			args.destinationId,
-			generateFiles,
-			{
-				projectRoot: args.projectRoot,
-				tag: args.tag
-			}
-		);
+		try {
+			// Call the core moveTask function with file generation control
+			const generateFiles = args.generateFiles !== false; // Default to true
+			const result = await moveTask(
+				tasksPath,
+				args.sourceId,
+				args.destinationId,
+				generateFiles,
+				{
+					projectRoot: args.projectRoot,
+					tag: args.tag
+				}
+			);
 
-		// Restore console output
-		disableSilentMode();
+			return {
+				success: true,
+				data: {
+					...result,
+					message: `Successfully moved task/subtask ${args.sourceId} to ${args.destinationId}`
+				}
+			};
+		} catch (error) {
+			log.error(`Failed to move task: ${error.message}`);
 
-		return {
-			success: true,
-			data: {
-				...result,
-				message: `Successfully moved task/subtask ${args.sourceId} to ${args.destinationId}`
-			}
-		};
+			return {
+				success: false,
+				error: {
+					message: error.message,
+					code: 'MOVE_TASK_ERROR'
+				}
+			};
+		} finally {
+			// Ensure silent mode is always restored regardless of how the function exits
+			disableSilentMode();
+		}
 	} catch (error) {
-		// Restore console output in case of error
-		disableSilentMode();
-
-		log.error(`Failed to move task: ${error.message}`);
-
+		log.error(`Error in moveTaskDirect: ${error.message}`);
 		return {
 			success: false,
 			error: {
 				message: error.message,
-				code: 'MOVE_TASK_ERROR'
+				code: 'MOVE_TASK_SETUP_ERROR'
 			}
 		};
 	}

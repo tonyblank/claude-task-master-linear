@@ -373,7 +373,7 @@ For AI-powered commands that benefit from project context, follow the research c
         tasks: taskIds,
         files: filePaths,
         customContext: options.context,
-        includeProjectTree: options.projectTree,
+        includeProjectTree: options.tree,
         format: 'research',
         includeTokenCounts: true
       });

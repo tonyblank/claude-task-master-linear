@@ -34,6 +34,18 @@ export async function renameTagDirect(args, log, context = {}) {
 	const mcpLog = createLogWrapper(log);
 
 	try {
+		// Validate that we're not renaming to the same name
+		if (oldName === newName) {
+			log.error('Cannot rename tag to the same name');
+			return {
+				success: false,
+				error: {
+					code: 'INVALID_PARAMETER',
+					message: 'New tag name must be different from the current name'
+				}
+			};
+		}
+
 		// Check if tasksJsonPath was provided
 		if (!tasksJsonPath) {
 			log.error('renameTagDirect called without tasksJsonPath');

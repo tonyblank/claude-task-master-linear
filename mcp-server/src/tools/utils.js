@@ -566,9 +566,10 @@ function createContentResponse(content) {
  * @param {string} errorMessage - Error message to include in response
  * @param {Object} [versionInfo] - Optional version information object
  * @param {Object} [tagInfo] - Optional tag information object
+ * @param {number} [status] - Optional HTTP status code (defaults to 400)
  * @returns {Object} - Error content response object in FastMCP format
  */
-function createErrorResponse(errorMessage, versionInfo, tagInfo) {
+function createErrorResponse(errorMessage, versionInfo, tagInfo, status = 400) {
 	// Provide fallback version info if not provided
 	if (!versionInfo) {
 		versionInfo = getVersionInfo();
@@ -591,7 +592,8 @@ Current Tag: ${tagInfo.currentTag}`;
 				text: responseText
 			}
 		],
-		isError: true
+		isError: true,
+		status: status
 	};
 }
 

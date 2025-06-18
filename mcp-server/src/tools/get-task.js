@@ -66,11 +66,16 @@ export function registerShowTaskTool(server) {
 			projectRoot: z
 				.string()
 				.describe(
-					'Absolute path to the project root directory (Optional, usually from session)'
+					'Absolute path to the project root directory. Must be an absolute path.'
 				)
 		}),
 		execute: withNormalizedProjectRoot(async (args, { log, session }) => {
 			const { id, file, status, projectRoot } = args;
+
+			// Handle comma-separated IDs
+			const taskIds = id.includes(',')
+				? id.split(',').map((id) => id.trim())
+				: [id];
 
 			try {
 				log.info(
@@ -111,7 +116,7 @@ export function registerShowTaskTool(server) {
 						tasksJsonPath: tasksJsonPath,
 						reportPath: complexityReportPath,
 						// Pass other relevant args
-						id: id,
+						id: taskIds.length === 1 ? taskIds[0] : taskIds.join(','),
 						status: status,
 						projectRoot: projectRoot
 					},

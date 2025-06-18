@@ -36,7 +36,6 @@ export async function useTagDirect(args, log, context = {}) {
 		// Check if tasksJsonPath was provided
 		if (!tasksJsonPath) {
 			log.error('useTagDirect called without tasksJsonPath');
-			disableSilentMode();
 			return {
 				success: false,
 				error: {
@@ -49,7 +48,6 @@ export async function useTagDirect(args, log, context = {}) {
 		// Check required parameters
 		if (!name || typeof name !== 'string') {
 			log.error('Missing required parameter: name');
-			disableSilentMode();
 			return {
 				success: false,
 				error: {
@@ -74,9 +72,6 @@ export async function useTagDirect(args, log, context = {}) {
 			'json' // outputFormat - use 'json' to suppress CLI UI
 		);
 
-		// Restore normal logging
-		disableSilentMode();
-
 		return {
 			success: true,
 			data: {
@@ -88,9 +83,6 @@ export async function useTagDirect(args, log, context = {}) {
 			}
 		};
 	} catch (error) {
-		// Make sure to restore normal logging even if there's an error
-		disableSilentMode();
-
 		log.error(`Error in useTagDirect: ${error.message}`);
 		return {
 			success: false,
@@ -99,5 +91,8 @@ export async function useTagDirect(args, log, context = {}) {
 				message: error.message
 			}
 		};
+	} finally {
+		// Ensure silent mode is always restored regardless of how the function exits
+		disableSilentMode();
 	}
 }

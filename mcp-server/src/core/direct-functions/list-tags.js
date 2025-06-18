@@ -26,6 +26,18 @@ export async function listTagsDirect(args, log, context = {}) {
 	const { tasksJsonPath, showMetadata = false, projectRoot } = args;
 	const { session } = context;
 
+	// Check if tasksJsonPath was provided before enabling silent mode
+	if (!tasksJsonPath) {
+		log.error('listTagsDirect called without tasksJsonPath');
+		return {
+			success: false,
+			error: {
+				code: 'MISSING_ARGUMENT',
+				message: 'tasksJsonPath is required'
+			}
+		};
+	}
+
 	// Enable silent mode to prevent console logs from interfering with JSON response
 	enableSilentMode();
 
@@ -33,19 +45,6 @@ export async function listTagsDirect(args, log, context = {}) {
 	const mcpLog = createLogWrapper(log);
 
 	try {
-		// Check if tasksJsonPath was provided
-		if (!tasksJsonPath) {
-			log.error('listTagsDirect called without tasksJsonPath');
-			disableSilentMode();
-			return {
-				success: false,
-				error: {
-					code: 'MISSING_ARGUMENT',
-					message: 'tasksJsonPath is required'
-				}
-			};
-		}
-
 		log.info('Listing all tags');
 
 		// Prepare options

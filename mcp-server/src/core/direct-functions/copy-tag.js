@@ -39,7 +39,6 @@ export async function copyTagDirect(args, log, context = {}) {
 		// Check if tasksJsonPath was provided
 		if (!tasksJsonPath) {
 			log.error('copyTagDirect called without tasksJsonPath');
-			disableSilentMode();
 			return {
 				success: false,
 				error: {
@@ -52,7 +51,6 @@ export async function copyTagDirect(args, log, context = {}) {
 		// Check required parameters
 		if (!sourceName || typeof sourceName !== 'string') {
 			log.error('Missing required parameter: sourceName');
-			disableSilentMode();
 			return {
 				success: false,
 				error: {
@@ -64,7 +62,6 @@ export async function copyTagDirect(args, log, context = {}) {
 
 		if (!targetName || typeof targetName !== 'string') {
 			log.error('Missing required parameter: targetName');
-			disableSilentMode();
 			return {
 				success: false,
 				error: {
@@ -95,9 +92,6 @@ export async function copyTagDirect(args, log, context = {}) {
 			'json' // outputFormat - use 'json' to suppress CLI UI
 		);
 
-		// Restore normal logging
-		disableSilentMode();
-
 		return {
 			success: true,
 			data: {
@@ -110,9 +104,6 @@ export async function copyTagDirect(args, log, context = {}) {
 			}
 		};
 	} catch (error) {
-		// Make sure to restore normal logging even if there's an error
-		disableSilentMode();
-
 		log.error(`Error in copyTagDirect: ${error.message}`);
 		return {
 			success: false,
@@ -121,5 +112,8 @@ export async function copyTagDirect(args, log, context = {}) {
 				message: error.message
 			}
 		};
+	} finally {
+		// Ensure silent mode is always restored regardless of how the function exits
+		disableSilentMode();
 	}
 }

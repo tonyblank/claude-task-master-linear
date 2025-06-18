@@ -20,17 +20,25 @@ export function registerRenameTagTool(server) {
 	server.addTool({
 		name: 'rename_tag',
 		description: 'Rename an existing tag',
-		parameters: z.object({
-			oldName: z.string().describe('Current name of the tag to rename'),
-			newName: z.string().describe('New name for the tag'),
-			file: z
-				.string()
-				.optional()
-				.describe('Path to the tasks file (default: tasks/tasks.json)'),
-			projectRoot: z
-				.string()
-				.describe('The directory of the project. Must be an absolute path.')
-		}),
+		parameters: z
+			.object({
+				oldName: z
+					.string()
+					.min(1)
+					.describe('Current name of the tag to rename'),
+				newName: z.string().min(1).describe('New name for the tag'),
+				file: z
+					.string()
+					.optional()
+					.describe('Path to the tasks file (default: tasks/tasks.json)'),
+				projectRoot: z
+					.string()
+					.describe('The directory of the project. Must be an absolute path.')
+			})
+			.refine((data) => data.oldName !== data.newName, {
+				message: 'New tag name must differ from current name',
+				path: ['newName']
+			}),
 		execute: withNormalizedProjectRoot(async (args, { log, session }) => {
 			try {
 				log.info(`Starting rename-tag with args: ${JSON.stringify(args)}`);

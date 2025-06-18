@@ -49,6 +49,21 @@ export async function createTagFromBranchDirect(args, log, context = {}) {
 	const mcpLog = createLogWrapper(log);
 
 	try {
+		// Validate mutually-exclusive copy options
+		if (copyFromCurrent && copyFromTag) {
+			log.error(
+				'Both copyFromCurrent and copyFromTag cannot be specified simultaneously'
+			);
+			return {
+				success: false,
+				error: {
+					code: 'INVALID_PARAMETERS',
+					message:
+						'Cannot specify both copyFromCurrent and copyFromTag - they are mutually exclusive'
+				}
+			};
+		}
+
 		// Check if tasksJsonPath was provided
 		if (!tasksJsonPath) {
 			log.error('createTagFromBranchDirect called without tasksJsonPath');

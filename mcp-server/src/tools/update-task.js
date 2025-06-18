@@ -7,7 +7,8 @@ import { z } from 'zod';
 import {
 	handleApiResult,
 	createErrorResponse,
-	withNormalizedProjectRoot
+	withNormalizedProjectRoot,
+	processMCPResponseData
 } from './utils.js';
 import { updateTaskByIdDirect } from '../core/task-master-core.js';
 import { findTasksPath } from '../core/utils/path-utils.js';
@@ -88,7 +89,7 @@ export function registerUpdateTaskTool(server) {
 					result,
 					log,
 					'Error updating task',
-					undefined,
+					processMCPResponseData,
 					args.projectRoot
 				);
 			} catch (error) {

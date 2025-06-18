@@ -21,7 +21,10 @@ export function registerUseTagTool(server) {
 		name: 'use_tag',
 		description: 'Switch to a different tag context for task operations',
 		parameters: z.object({
-			name: z.string().describe('Name of the tag to switch to'),
+			name: z
+				.string()
+				.min(1, 'Tag name cannot be empty')
+				.describe('Name of the tag to switch to'),
 			file: z
 				.string()
 				.optional()

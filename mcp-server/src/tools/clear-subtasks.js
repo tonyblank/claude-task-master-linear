@@ -35,6 +35,7 @@ export function registerClearSubtasksTool(server) {
 					),
 				projectRoot: z
 					.string()
+					.optional()
 					.describe('The directory of the project. Must be an absolute path.'),
 				tag: z.string().optional().describe('Tag context to operate on')
 			})
