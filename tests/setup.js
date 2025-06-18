@@ -21,8 +21,29 @@ process.env.PERPLEXITY_API_KEY = 'test-mock-perplexity-key-for-tests';
 // Add global test helpers if needed
 global.wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// If needed, silence console during tests
-if (process.env.SILENCE_CONSOLE === 'true') {
+// Global teardown to handle open handles
+let teardownHandlers = [];
+
+// Function to register cleanup handlers
+global.registerTeardownHandler = (handler) => {
+	teardownHandlers.push(handler);
+};
+
+// Process-level cleanup for open handles
+process.on('beforeExit', async () => {
+	// Run all registered teardown handlers
+	for (const handler of teardownHandlers) {
+		try {
+			await handler();
+		} catch (error) {
+			console.error('Teardown handler error:', error);
+		}
+	}
+	teardownHandlers.length = 0;
+});
+
+// Silence console during tests in CI mode or when explicitly requested
+if (process.env.CI === 'true' || process.env.SILENCE_CONSOLE === 'true') {
 	global.console = {
 		...console,
 		log: () => {},
