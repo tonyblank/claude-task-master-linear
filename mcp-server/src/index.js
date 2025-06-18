@@ -65,11 +65,35 @@ class TaskMasterMCPServer {
 			await this.init();
 		}
 
-		// Start the FastMCP server with increased timeout
-		await this.server.start({
-			transportType: 'stdio',
+		// Determine transport type and configuration based on environment
+		const transportType = process.env.MCP_TRANSPORT || 'stdio';
+		const port = process.env.MCP_PORT || 3000;
+
+		let serverConfig = {
 			timeout: 120000 // 2 minutes timeout (in milliseconds)
-		});
+		};
+
+		if (transportType === 'tcp') {
+			serverConfig = {
+				...serverConfig,
+				transportType: 'httpStream',
+				httpStream: {
+					port: parseInt(port)
+				}
+			};
+			this.logger.info(
+				`Starting MCP server with HTTP Stream transport on port ${port}`
+			);
+		} else {
+			serverConfig = {
+				...serverConfig,
+				transportType: 'stdio'
+			};
+			this.logger.info('Starting MCP server with stdio transport');
+		}
+
+		// Start the FastMCP server
+		await this.server.start(serverConfig);
 
 		return this;
 	}

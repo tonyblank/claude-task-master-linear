@@ -1,253 +1,213 @@
 {
 	"meta": {
-		"generatedAt": "2025-06-17T23:13:44.504Z",
-		"tasksAnalyzed": 30,
-		"totalTasks": 30,
-		"analysisCount": 30,
+		"generatedAt": "2025-06-18T21:30:03.404Z",
+		"tasksAnalyzed": 25,
+		"totalTasks": 25,
+		"analysisCount": 25,
 		"thresholdScore": 5,
 		"projectName": "Taskmaster",
 		"usedResearch": true
 	},
 	"complexityAnalysis": [
 		{
-			"taskId": 1,
-			"taskTitle": "Setup Project Dependencies and Linear SDK Integration",
-			"complexityScore": 3,
-			"recommendedSubtasks": 3,
-			"expansionPrompt": "Break down the Linear SDK setup into: 1) Installing npm dependencies and verifying package.json updates, 2) Creating a basic Linear client initialization module with error handling, 3) Writing integration tests to verify API connectivity with mock and real API keys",
-			"reasoning": "This is a straightforward setup task involving npm package installation and basic API testing. The complexity is low as it's mostly configuration work with well-documented SDK usage."
-		},
-		{
-			"taskId": 2,
-			"taskTitle": "Extend Taskmaster Config Schema for Linear Integration",
-			"complexityScore": 4,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Expand into: 1) Design the Linear config schema with TypeScript interfaces, 2) Implement config file reading/parsing with validation, 3) Create config update utilities that preserve existing settings, 4) Add unit tests for config operations including edge cases",
-			"reasoning": "Requires careful schema design and safe JSON manipulation. The need to preserve existing config while adding new fields adds moderate complexity."
-		},
-		{
-			"taskId": 3,
-			"taskTitle": "Implement Environment Variable Loading for API Key",
-			"complexityScore": 3,
-			"recommendedSubtasks": 3,
-			"expansionPrompt": "Break down into: 1) Implement dotenv loading and environment variable reading, 2) Create API key validation and format checking logic, 3) Design user-friendly error messages and setup guidance for missing/invalid keys",
-			"reasoning": "Standard environment variable handling with some additional validation logic. The complexity is low as this is a common pattern with established best practices."
-		},
-		{
-			"taskId": 4,
-			"taskTitle": "Create Integration Manager and Event Hook System",
-			"complexityScore": 7,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Already expanded with appropriate subtasks covering architecture design, event system implementation, plugin registration, command modifications, and error isolation",
-			"reasoning": "This is a complex architectural task requiring design of a plugin system, event-driven architecture, and modification of existing code. The subtasks are already well-defined and comprehensive."
-		},
-		{
-			"taskId": 5,
-			"taskTitle": "Implement Linear Integration Module Core Structure",
-			"complexityScore": 5,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Expand into: 1) Create LinearIntegration class with proper TypeScript interfaces, 2) Implement Linear client initialization with connection pooling, 3) Add comprehensive error handling and retry logic for API calls, 4) Create unit tests for the integration module",
-			"reasoning": "Moderate complexity involving API client setup, error handling patterns, and integration with the plugin system. Requires understanding of both Linear API and the Integration Manager."
-		},
-		{
-			"taskId": 6,
-			"taskTitle": "Implement Basic Task Creation Sync to Linear",
-			"complexityScore": 5,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Break down into: 1) Map Taskmaster task fields to Linear issue schema, 2) Implement the createIssue GraphQL mutation with proper field mapping, 3) Handle API responses and extract issue metadata, 4) Add error recovery without breaking local operations",
-			"reasoning": "Involves GraphQL mutation implementation, field mapping logic, and careful error handling to ensure local operations aren't affected by sync failures."
-		},
-		{
-			"taskId": 7,
-			"taskTitle": "Implement Linear ID Storage and File Update Mechanism",
-			"complexityScore": 5,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Expand into: 1) Extend task schema with Linear metadata fields, 2) Implement atomic file writing with backup mechanisms, 3) Add file locking to prevent concurrent access issues, 4) Create tests for data persistence and recovery",
-			"reasoning": "File I/O operations with data integrity concerns require careful implementation. Concurrent access and atomic updates add complexity."
-		},
-		{
-			"taskId": 8,
-			"taskTitle": "Create Interactive Setup Wizard Command",
-			"complexityScore": 6,
-			"recommendedSubtasks": 6,
-			"expansionPrompt": "Already expanded with comprehensive subtasks covering API key collection, team/project selection, validation, secure storage, and setup confirmation",
-			"reasoning": "Interactive CLI with multiple steps, API calls, and user input validation. The existing subtasks properly cover all aspects of the wizard implementation."
-		},
-		{
-			"taskId": 9,
-			"taskTitle": "Implement Linear Workflow State Mapping",
-			"complexityScore": 5,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Break down into: 1) Query Linear API for team workflow states, 2) Create mapping logic between Taskmaster and Linear states, 3) Implement fallback handling for unmapped states, 4) Store and retrieve state mappings from config",
-			"reasoning": "Requires API queries, mapping logic, and handling of various workflow configurations. The need for fallback handling adds moderate complexity."
-		},
-		{
-			"taskId": 10,
-			"taskTitle": "Implement Task Status Update Sync",
-			"complexityScore": 4,
-			"recommendedSubtasks": 3,
-			"expansionPrompt": "Expand into: 1) Implement status change event handler with state mapping lookup, 2) Create updateIssue mutation for state changes, 3) Handle special status cases and edge conditions",
-			"reasoning": "Relatively straightforward implementation using the state mapping from task 9. Main complexity is in handling edge cases and special statuses."
-		},
-		{
-			"taskId": 11,
-			"taskTitle": "Implement Subtask Creation and Hierarchy Sync",
-			"complexityScore": 7,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Already expanded with appropriate subtasks covering parent-child detection, subtask creation, conversions, consistency maintenance, and testing",
-			"reasoning": "Complex task involving hierarchical data structures, relationship management, and maintaining consistency across systems. The existing subtasks comprehensively address all aspects."
-		},
-		{
-			"taskId": 12,
-			"taskTitle": "Implement Task Deletion and Archival Sync",
-			"complexityScore": 4,
-			"recommendedSubtasks": 3,
-			"expansionPrompt": "Break down into: 1) Implement deletion event handler with Linear issue lookup, 2) Create archiveIssue mutation implementation, 3) Handle cascading deletions for subtasks",
-			"reasoning": "Straightforward archival operation with some complexity around handling subtask relationships and ensuring proper cleanup."
-		},
-		{
-			"taskId": 13,
-			"taskTitle": "Implement Priority Mapping and Sync",
-			"complexityScore": 3,
-			"recommendedSubtasks": 3,
-			"expansionPrompt": "Expand into: 1) Create priority mapping logic between systems, 2) Implement priority sync for create and update operations, 3) Add fallback to labels when priority field is disabled",
-			"reasoning": "Simple mapping implementation with a fallback mechanism. Low complexity as it's mostly configuration and conditional logic."
-		},
-		{
-			"taskId": 14,
-			"taskTitle": "Implement Taskmaster Label Creation and Management",
-			"complexityScore": 4,
-			"recommendedSubtasks": 3,
-			"expansionPrompt": "Break down into: 1) Check for existing Taskmaster label and create if needed, 2) Implement label application to all synced issues, 3) Add configuration option to disable label usage",
-			"reasoning": "Moderate complexity involving label API operations and configuration management. Requires handling existing label scenarios."
-		},
-		{
-			"taskId": 15,
-			"taskTitle": "Implement Language Label Detection and Sync",
-			"complexityScore": 5,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Already expanded with subtasks for detection logic, label creation with colors, application, and manual override",
-			"reasoning": "Involves pattern detection, color mapping, and label management. The existing subtasks properly cover the implementation scope."
-		},
-		{
 			"taskId": 16,
-			"taskTitle": "Implement Category Label System",
-			"complexityScore": 5,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Already expanded with subtasks for default categories, detection logic, label creation, and custom configuration",
-			"reasoning": "Similar complexity to language labels with additional configuration requirements. The existing subtasks are comprehensive."
+			"taskTitle": "Setup Linear SDK and API Integration",
+			"complexityScore": 4,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break down the Linear SDK setup into: 1) Installing dependencies and configuring package.json, 2) Creating environment configuration with .env setup, 3) Implementing Linear client initialization module, 4) Writing test script for API connectivity verification, 5) Creating unit and integration tests for the SDK setup",
+			"reasoning": "This is a foundational setup task with clear steps but requires careful configuration and testing. The complexity is moderate due to API key management and test environment setup."
 		},
 		{
 			"taskId": 17,
-			"taskTitle": "Implement Branch Name Capture and Storage",
-			"complexityScore": 3,
-			"recommendedSubtasks": 3,
-			"expansionPrompt": "Expand into: 1) Extract branch name from Linear API response, 2) Store branch name in task data structure, 3) Handle updates when Linear's naming scheme changes",
-			"reasoning": "Simple data extraction and storage task with minimal complexity. Mainly involves parsing API responses and updating local data."
+			"taskTitle": "Implement Configuration Schema and Environment Loading",
+			"complexityScore": 5,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Expand into: 1) Design Linear configuration schema structure, 2) Implement config.json extension with backward compatibility, 3) Create dotenv integration for secure credential loading, 4) Build configuration validation utilities, 5) Implement config getter/setter helper functions, 6) Write comprehensive tests for config manipulation",
+			"reasoning": "Requires careful schema design and must maintain backward compatibility while adding new features. The validation and security aspects add complexity."
 		},
 		{
 			"taskId": 18,
-			"taskTitle": "Implement Task Dependency Sync to Linear Relations",
+			"taskTitle": "Create Integration Manager and Event Hook System",
 			"complexityScore": 7,
-			"recommendedSubtasks": 6,
-			"expansionPrompt": "Already expanded with comprehensive subtasks covering ID mapping, relation mutations, circular dependency detection, sync timing, updates, and removal",
-			"reasoning": "Complex task involving graph relationships, circular dependency detection, and maintaining consistency. The existing subtasks properly address all challenges."
+			"recommendedSubtasks": 8,
+			"expansionPrompt": "Break down into: 1) Design event-driven architecture and define event types, 2) Implement IntegrationManager base class, 3) Create event emission system with async handling, 4) Build error boundary and isolation mechanisms, 5) Implement integration registration system, 6) Add hooks to addTask command as POC, 7) Create event payload standardization, 8) Write comprehensive test suite for event system",
+			"reasoning": "This is a complex architectural task that forms the backbone of the integration system. It requires careful design for extensibility and robust error handling."
 		},
 		{
 			"taskId": 19,
-			"taskTitle": "Implement Bulk Task Sync for Parse-PRD Operations",
+			"taskTitle": "Implement Linear Issue Creation with ID Storage",
 			"complexityScore": 6,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Already expanded with subtasks for bulk detection, sequential creation, ID collection, failure handling, and summary reporting",
-			"reasoning": "Involves handling multiple operations, progress tracking, and graceful error recovery. The existing subtasks comprehensively cover the requirements."
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Expand to: 1) Create LinearIntegration module structure, 2) Implement issue creation with field mapping logic, 3) Build response parsing and ID extraction, 4) Implement atomic file update mechanism, 5) Add retry logic with exponential backoff, 6) Create formatted success/error messaging, 7) Write unit and integration tests",
+			"reasoning": "Core functionality with multiple moving parts including API calls, file operations, and error handling. The atomic update requirement adds complexity."
 		},
 		{
 			"taskId": 20,
-			"taskTitle": "Implement Manual Sync Commands (sync-pending)",
-			"complexityScore": 5,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Break down into: 1) Implement task scanning for missing Linear IDs, 2) Create batch sync logic for unsynced tasks, 3) Implement sync-status command with discrepancy detection, 4) Add retry mechanism for failed syncs",
-			"reasoning": "Moderate complexity involving task scanning, batch operations, and status reconciliation. Requires careful handling of various sync states."
+			"taskTitle": "Build Interactive Setup Wizard Command",
+			"complexityScore": 6,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Break down into: 1) Set up inquirer for interactive prompts, 2) Implement API key validation flow, 3) Create team listing and selection interface, 4) Build project selection within teams, 5) Implement label preference configuration, 6) Create config and .env file writing logic, 7) Add success confirmation and help text",
+			"reasoning": "Interactive CLI with multiple steps, API validation, and file operations. User experience considerations add complexity."
 		},
 		{
 			"taskId": 21,
-			"taskTitle": "Implement Robust Error Handling and Offline Support",
-			"complexityScore": 7,
+			"taskTitle": "Implement Linear Workflow State Mapping",
+			"complexityScore": 5,
 			"recommendedSubtasks": 6,
-			"expansionPrompt": "Already expanded with comprehensive subtasks covering error wrapping, offline detection, sync queue, retry logic, error messages, and local operation resilience",
-			"reasoning": "Complex task requiring comprehensive error handling strategy, offline support, and queue management. The existing subtasks properly address all aspects."
+			"expansionPrompt": "Expand into: 1) Query Linear API for workflow states, 2) Implement intelligent state name matching logic, 3) Create state ID caching mechanism, 4) Build custom mapping override system, 5) Handle edge cases for custom workflows, 6) Write tests for various workflow configurations",
+			"reasoning": "Requires intelligent matching logic and handling of various workflow configurations. The fallback mechanisms add moderate complexity."
 		},
 		{
 			"taskId": 22,
-			"taskTitle": "Implement Rate Limiting and Performance Optimization",
-			"complexityScore": 6,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Already expanded with subtasks for rate limit detection, backoff strategies, request batching, and progress indicators",
-			"reasoning": "Involves implementing sophisticated retry logic, batching algorithms, and performance monitoring. The existing subtasks cover the key areas."
+			"taskTitle": "Implement Task Status Update Synchronization",
+			"complexityScore": 5,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break down to: 1) Create status change event handler, 2) Implement status to state ID mapping, 3) Build Linear API update calls, 4) Handle special status cases (deferred, cancelled), 5) Add comprehensive error handling and testing",
+			"reasoning": "Straightforward API integration with some special case handling. The state mapping dependency is already handled by another task."
 		},
 		{
 			"taskId": 23,
-			"taskTitle": "Implement Task Field Mapping and Description Formatting",
-			"complexityScore": 4,
-			"recommendedSubtasks": 3,
-			"expansionPrompt": "Expand into: 1) Design Markdown template for Linear descriptions, 2) Implement field formatting with proper escaping, 3) Handle edge cases like empty fields and length limits",
-			"reasoning": "Moderate complexity involving Markdown formatting and handling various content types. Requires attention to formatting details and edge cases."
+			"taskTitle": "Implement Subtask Creation and Hierarchy Sync",
+			"complexityScore": 6,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Expand into: 1) Detect and handle parent-child relationships, 2) Implement subtask creation with parent linking, 3) Handle task-to-subtask conversion, 4) Build batch subtask creation for bulk operations, 5) Implement parent sync verification, 6) Create tests for hierarchy scenarios",
+			"reasoning": "Hierarchical relationships add complexity, especially with bulk operations and conversion scenarios. Error handling for missing parents is critical."
 		},
 		{
 			"taskId": 24,
-			"taskTitle": "Implement Configuration Validation and Setup Testing",
-			"complexityScore": 5,
+			"taskTitle": "Implement Task Deletion and Archival Sync",
+			"complexityScore": 4,
 			"recommendedSubtasks": 4,
-			"expansionPrompt": "Already expanded with subtasks for validation rules, API key verification, access validation, and error messaging",
-			"reasoning": "Involves comprehensive validation logic and user-friendly error handling. The existing subtasks properly cover all validation aspects."
+			"expansionPrompt": "Break down to: 1) Create deletion event handler, 2) Implement Linear issue archival calls, 3) Handle parent-child deletion scenarios, 4) Add soft delete tracking and testing",
+			"reasoning": "Relatively straightforward archival operations with some edge case handling for hierarchies."
 		},
 		{
 			"taskId": 25,
-			"taskTitle": "Implement CLI User Interface Enhancements",
-			"complexityScore": 4,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Break down into: 1) Implement colored console output with chalk or similar, 2) Create progress bar components for long operations, 3) Design consistent message formatting, 4) Add terminal compatibility detection",
-			"reasoning": "Moderate complexity involving terminal UI libraries and ensuring cross-platform compatibility. Requires attention to user experience details."
+			"taskTitle": "Implement Priority and Label Synchronization",
+			"complexityScore": 6,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Expand into: 1) Implement priority field mapping, 2) Create label existence checking, 3) Build label creation with color schemes, 4) Implement category label system, 5) Add language detection and labeling, 6) Create configuration-based label application, 7) Write tests for label management",
+			"reasoning": "Multiple label types with creation, checking, and application logic. Color schemes and configuration options add complexity."
 		},
 		{
 			"taskId": 26,
-			"taskTitle": "Implement Complexity to Story Points Mapping",
-			"complexityScore": 3,
-			"recommendedSubtasks": 3,
-			"expansionPrompt": "Expand into: 1) Create configurable complexity-to-points mapping, 2) Implement estimate field updates in Linear, 3) Handle teams without estimation enabled",
-			"reasoning": "Simple mapping implementation with configuration options. Low complexity as it builds on existing complexity analysis features."
+			"taskTitle": "Implement Dependency Relationship Sync",
+			"complexityScore": 5,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break down to: 1) Parse dependency arrays from tasks, 2) Implement deferred relation creation for bulk ops, 3) Create Linear relation API calls, 4) Add duplicate relation detection, 5) Handle circular dependency edge cases",
+			"reasoning": "Dependency management with deferred creation for bulk operations. Duplicate detection and circular dependency handling add moderate complexity."
 		},
 		{
 			"taskId": 27,
-			"taskTitle": "Implement Integration Architecture Documentation",
-			"complexityScore": 5,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Already expanded with subtasks for architecture docs, developer guide, user documentation, and examples",
-			"reasoning": "Requires comprehensive documentation across multiple areas. The existing subtasks properly organize the documentation effort."
+			"taskTitle": "Implement Branch Name Storage and Retrieval",
+			"complexityScore": 3,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Expand to: 1) Extract branch names from Linear responses, 2) Implement storage in task data structure, 3) Ensure persistence through updates and add tests",
+			"reasoning": "Simple data extraction and storage task with minimal complexity."
 		},
 		{
 			"taskId": 28,
-			"taskTitle": "Implement Comprehensive Testing Suite",
-			"complexityScore": 8,
+			"taskTitle": "Implement Sync-Pending Command for Offline Recovery",
+			"complexityScore": 5,
 			"recommendedSubtasks": 6,
-			"expansionPrompt": "Already expanded with comprehensive subtasks covering test fixtures, unit tests, integration tests, E2E tests, CI/CD setup, and coverage targets",
-			"reasoning": "Very complex task requiring multiple testing strategies, tools, and comprehensive coverage. The existing subtasks properly address all testing needs."
+			"expansionPrompt": "Break down into: 1) Scan for unsynced tasks in tasks.json, 2) Implement parent-first sync ordering, 3) Add progress reporting for bulk operations, 4) Implement rate limiting logic, 5) Create dry-run mode option, 6) Build comprehensive sync reporting",
+			"reasoning": "Bulk operation with ordering requirements and rate limiting. Progress reporting and dry-run mode add user experience complexity."
 		},
 		{
 			"taskId": 29,
-			"taskTitle": "Implement Security and Data Validation",
-			"complexityScore": 7,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Already expanded with subtasks for security audit, input sanitization, validation, log security, and vulnerability testing",
-			"reasoning": "Critical security implementation requiring careful attention to multiple attack vectors. The existing subtasks comprehensively cover security concerns."
+			"taskTitle": "Implement Complexity to Story Points Mapping",
+			"complexityScore": 3,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Expand to: 1) Create complexity to Fibonacci mapping logic, 2) Detect complexity from task data, 3) Add estimate field to API calls, 4) Implement configurable mapping system",
+			"reasoning": "Simple mapping logic with configuration options. Low complexity as it builds on existing infrastructure."
 		},
 		{
 			"taskId": 30,
-			"taskTitle": "Final Integration Testing and Production Readiness",
+			"taskTitle": "Add Integration Points to All Taskmaster Commands",
+			"complexityScore": 7,
+			"recommendedSubtasks": 8,
+			"expansionPrompt": "Break down by command: 1) Add hooks to remove-task command, 2) Integrate remove-subtask command, 3) Hook set-status command, 4) Integrate parse-prd bulk operations, 5) Handle task update commands, 6) Implement edge case handling, 7) Ensure consistent error handling, 8) Add comprehensive testing for all commands",
+			"reasoning": "Requires touching multiple commands with consistent implementation. Edge cases and bulk operations add significant complexity."
+		},
+		{
+			"taskId": 31,
+			"taskTitle": "Implement Robust Error Handling and Logging",
 			"complexityScore": 6,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Expand into: 1) Create error categorization system, 2) Implement retry logic with backoff, 3) Build user-friendly error messages, 4) Add file-based error logging, 5) Implement session-based error suppression, 6) Create [Linear Sync] output formatting, 7) Write error scenario tests",
+			"reasoning": "Comprehensive error handling system touching all integration points. Retry logic and user experience considerations add complexity."
+		},
+		{
+			"taskId": 32,
+			"taskTitle": "Create Comprehensive Documentation and Help System",
+			"complexityScore": 5,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Break down into: 1) Write Linear Integration README section, 2) Document all new commands with examples, 3) Update CLI help text, 4) Create troubleshooting guide, 5) Add architecture diagrams, 6) Write migration guide for existing users",
+			"reasoning": "Extensive documentation requiring clear technical writing and visual diagrams. Multiple document types add moderate complexity."
+		},
+		{
+			"taskId": 33,
+			"taskTitle": "Implement Performance Optimizations and Rate Limiting",
+			"complexityScore": 6,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Expand to: 1) Implement request rate limiting queue, 2) Add request prioritization system, 3) Create progress indicators for long operations, 4) Build caching layer for frequent data, 5) Optimize bulk operations, 6) Add performance monitoring, 7) Write performance tests",
+			"reasoning": "Performance optimization with queuing, caching, and monitoring. Bulk operation handling and progress indication add complexity."
+		},
+		{
+			"taskId": 34,
+			"taskTitle": "Build Extensible Plugin Architecture Foundation",
+			"complexityScore": 8,
+			"recommendedSubtasks": 9,
+			"expansionPrompt": "Break down into: 1) Design plugin interface specification, 2) Create abstract Integration base class, 3) Refactor Linear code into plugin module, 4) Implement plugin registration mechanism, 5) Build plugin discovery system, 6) Create example stub integration, 7) Move Linear commands to plugin, 8) Write plugin development guide, 9) Ensure backward compatibility",
+			"reasoning": "Major architectural refactoring requiring careful design for extensibility. Backward compatibility and minimal core changes add significant complexity."
+		},
+		{
+			"taskId": 35,
+			"taskTitle": "Implement Comprehensive Testing Suite",
+			"complexityScore": 7,
+			"recommendedSubtasks": 8,
+			"expansionPrompt": "Expand into: 1) Set up testing framework with mocking, 2) Write unit tests for all functions, 3) Create integration tests with sandbox, 4) Build end-to-end test scenarios, 5) Set up CI/CD pipeline, 6) Create test data generators, 7) Implement regression tests, 8) Add coverage reporting",
+			"reasoning": "Comprehensive testing across multiple levels with CI/CD setup. Mock creation and sandbox testing add significant complexity."
+		},
+		{
+			"taskId": 36,
+			"taskTitle": "Conduct Security Audit and Hardening",
+			"complexityScore": 6,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Break down to: 1) Audit API key storage security, 2) Review input validation for injections, 3) Implement key rotation reminders, 4) Ensure HTTPS enforcement, 5) Add security headers, 6) Review dependency vulnerabilities, 7) Document security best practices",
+			"reasoning": "Security review across multiple attack vectors. Requires specialized knowledge and thorough testing."
+		},
+		{
+			"taskId": 37,
+			"taskTitle": "Implement Sync Status Audit Command",
+			"complexityScore": 5,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Expand into: 1) Create sync-status command structure, 2) Implement Linear issue verification, 3) Build status comparison logic, 4) Detect orphaned issues, 5) Create discrepancy reporting, 6) Add auto-fix capabilities for simple issues",
+			"reasoning": "Diagnostic tool with comparison logic and reporting. Auto-fix capabilities add moderate complexity."
+		},
+		{
+			"taskId": 38,
+			"taskTitle": "Polish User Experience and Feedback Messages",
+			"complexityScore": 4,
 			"recommendedSubtasks": 5,
-			"expansionPrompt": "Already expanded with subtasks for integration testing, performance testing, UAT, documentation, and final fixes",
-			"reasoning": "Comprehensive final validation requiring coordination across multiple areas. The existing subtasks properly organize the release preparation."
+			"expansionPrompt": "Break down to: 1) Implement chalk color coding system, 2) Add progress indicators with ora, 3) Standardize message formatting, 4) Implement verbose/quiet modes, 5) Add contextual help and error recovery hints",
+			"reasoning": "UI/UX improvements with consistent implementation across all commands. Relatively straightforward with existing libraries."
+		},
+		{
+			"taskId": 39,
+			"taskTitle": "Prepare Production Release and Deployment",
+			"complexityScore": 6,
+			"recommendedSubtasks": 8,
+			"expansionPrompt": "Expand into: 1) Conduct final code review, 2) Update version and changelogs, 3) Create release notes, 4) Package distribution artifacts, 5) Set up release automation, 6) Create onboarding materials, 7) Plan rollout strategy, 8) Set up production monitoring",
+			"reasoning": "Release preparation with multiple deliverables and production considerations. Rollout strategy and monitoring setup add complexity."
+		},
+		{
+			"taskId": 40,
+			"taskTitle": "Implement Git Integration Proof of Concept",
+			"complexityScore": 5,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Break down to: 1) Create GitIntegration plugin structure, 2) Implement branch creation on status change, 3) Add working directory safety checks, 4) Integrate simple-git library, 5) Create opt-in configuration, 6) Document as plugin example",
+			"reasoning": "Proof of concept with git operations and safety checks. Serves as example for plugin architecture, adding documentation requirements."
 		}
 	]
 }

@@ -592,8 +592,7 @@ Current Tag: ${tagInfo.currentTag}`;
 				text: responseText
 			}
 		],
-		isError: true,
-		status: status
+		isError: true
 	};
 }
 

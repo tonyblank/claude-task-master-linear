@@ -1,0 +1,28 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files first
+COPY package*.json ./
+
+# Copy application code before npm install to avoid prepare script issues
+COPY . .
+
+# Create .taskmaster directory if it doesn't exist
+RUN mkdir -p .taskmaster
+
+# Install dependencies (using --omit=dev instead of --only=production)
+RUN npm ci --omit=dev
+
+# Make the binary executable (after files are copied)
+RUN chmod +x bin/task-master.js mcp-server/server.js
+
+# Expose port for MCP server
+EXPOSE 3350
+
+# Set environment variables
+ENV NODE_ENV=production
+ENV MCP_PORT=3350
+
+# Run the MCP server
+CMD ["node", "mcp-server/server.js"]

@@ -1,0 +1,18 @@
+services:
+  taskmaster-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp
+    ports:
+      - "3350:3350"
+    volumes:
+      - ./.taskmaster:/app/.taskmaster
+      - ./assets:/app/assets
+    environment:
+      - NODE_ENV=production
+      - MCP_TRANSPORT=tcp
+      - MCP_PORT=3350
+      - LINEAR_API_KEY=${LINEAR_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    restart: unless-stopped
+    container_name: taskmaster-mcp-server
