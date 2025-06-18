@@ -23,7 +23,7 @@
 		"mcp-server": "node mcp-server/server.js",
 		"format-check": "npx biome format .",
 		"format": "npx biome format . --write",
-		"ci-check": "npm run format-check && npm run test:coverage -- --coverageThreshold '{\"global\":{\"branches\":0,\"functions\":0,\"lines\":0,\"statements\":0}}' --detectOpenHandles --forceExit"
+		"ci-check": "NODE_ENV=test CI=true FORCE_COLOR=1 npm run format-check && NODE_ENV=test CI=true FORCE_COLOR=1 npm run test:coverage -- --coverageThreshold '{\"global\":{\"branches\":0,\"functions\":0,\"lines\":0,\"statements\":0}}' --detectOpenHandles --forceExit"
 	},
 	"keywords": [
 		"claude",
