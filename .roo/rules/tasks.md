@@ -1,6 +1,6 @@
 ---
 description: Guidelines for implementing task management operations
-globs: scripts/modules/task-manager.js
+globs: ["scripts/modules/task-manager.js"]
 alwaysApply: false
 ---
 # Task Management Guidelines

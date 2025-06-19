@@ -82,7 +82,7 @@ class TaskMasterMCPServer {
 
 		if (transportType === 'tcp') {
 			const parsedPort = parseInt(port);
-			if (isNaN(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+			if (Number.isNaN(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
 				throw new Error(`Invalid port number: ${port}`);
 			}
 

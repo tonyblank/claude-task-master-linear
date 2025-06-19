@@ -22,7 +22,7 @@ process.env.PERPLEXITY_API_KEY = 'test-mock-perplexity-key-for-tests';
 global.wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // Global teardown to handle open handles
-let teardownHandlers = [];
+const teardownHandlers = [];
 
 // Function to register cleanup handlers
 global.registerTeardownHandler = (handler) => {

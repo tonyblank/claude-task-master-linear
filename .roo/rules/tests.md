@@ -719,21 +719,21 @@ npm test -- -t "pattern to match"
 
 ## Testing Asynchronous Code
 
-- **DO NOT rely on asynchronous operations in tests**
-  - ❌ DON'T: Use real async/await or Promise resolution in tests
-  - ✅ DO: Make all mocks return synchronous values when possible
+- **DO NOT rely on real external asynchronous operations in tests**
+  - ❌ DON'T: Make real API calls or use uncontrolled async operations
+  - ✅ DO: Use async/await patterns with properly mocked async functions
 
   ```javascript
   // ❌ DON'T: Use real async functions that might fail unpredictably
   test('should handle async operation', async () => {
-    const result = await realAsyncFunction(); // Can time out or fail for external reasons
+    const result = await realApiCall(); // Real external call - unreliable
     expect(result).toBe(expectedValue);
   });
 
-  // ✅ DO: Make async operations synchronous in tests
-  test('should handle operation', () => {
-    mockAsyncFunction.mockReturnValue({ success: true, data: 'test' });
-    const result = functionUnderTest();
+  // ✅ DO: Use async patterns with mocked promises
+  test('should handle async operation', async () => {
+    mockAsyncFunction.mockResolvedValue({ success: true, data: 'test' });
+    const result = await functionUnderTest();
     expect(result).toEqual({ success: true, data: 'test' });
   });
   ```
