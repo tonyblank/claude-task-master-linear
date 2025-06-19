@@ -1,6 +1,6 @@
 ---
 description: Guidelines for implementing and maintaining tests for Task Master CLI
-globs: "**/*.test.js,tests/**/*"
+globs: ["**/*.test.js", "tests/**/*"]
 ---
 
 # Testing Guidelines for Task Master CLI

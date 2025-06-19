@@ -1,6 +1,7 @@
 ---
+name: utilities
 description: Guidelines for implementing utility functions and helper modules in the TaskMaster codebase
-globs: ["scripts/modules/utils/**", "scripts/modules/utils.js", "mcp-server/src/utils/**", "mcp-server/src/tools/utils.js", "**/*utils*"] 
+globs: ["scripts/modules/utils.js", "scripts/modules/utils/**/*.js", "mcp-server/src/core/utils/**/*.js", "mcp-server/src/tools/utils.js"] 
 alwaysApply: false
 ---
 # Utility Function Guidelines
@@ -63,19 +64,9 @@ alwaysApply: false
    * Reads and parses a JSON file
    * @param {string} filepath - Path to the JSON file
    * @returns {Object|null} Parsed JSON data or null if error occurs
+   * Note: Use the comprehensive readJSON implementation with migration logic (see line 614)
    */
-  function readJSON(filepath) {
-    try {
-      const rawData = fs.readFileSync(filepath, 'utf8');
-      return JSON.parse(rawData);
-    } catch (error) {
-      log('error', `Error reading JSON file ${filepath}:`, error.message);
-      if (CONFIG.debug) {
-        console.error(error);
-      }
-      return null;
-    }
-  }
+  // Implementation moved to comprehensive version with migration logic below
   ```
 
 ## Configuration Management (via `config-manager.js`)
@@ -270,21 +261,7 @@ Taskmaster configuration (excluding API keys) is primarily managed through the `
 
   ```javascript
   // ✅ DO: Handle file operation errors properly in core utils
-  function writeJSON(filepath, data) {
-    try {
-      // Ensure directory exists (example)
-      const dir = path.dirname(filepath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
-    } catch (error) {
-      log('error', `Error writing JSON file ${filepath}:`, error.message);
-      if (CONFIG.debug) {
-        console.error(error);
-      }
-    }
-  }
+  // Note: Use the comprehensive writeJSON implementation with proper error handling (see line 649)
   ```
 
 ## Task-Specific Utilities (in `scripts/modules/utils.js`)
@@ -517,7 +494,6 @@ export {
   writeJSON,
   
   // String manipulation
-  sanitizePrompt,
   truncate,
   
   // Task utilities
@@ -537,7 +513,7 @@ export {
 
 // Example export from mcp-server/src/tools/utils.js
 export {
-  getProjectRoot,
+  findProjectRoot,
   getProjectRootFromSession,
   handleApiResult,
   executeTaskMasterCommand,
@@ -916,12 +892,8 @@ Refer to [`context_gathering.md`](mdc:.roo/rules/context_gathering.md) for detai
 
   ```javascript
   // ✅ DO: Implement tag-aware task utilities
-  function findTaskById(tasks, taskId) {
-    if (!Array.isArray(tasks)) {
-      return null;
-    }
-    return tasks.find(task => task.id === taskId) || null;
-  }
+  // Note: Use the comprehensive findTaskById implementation from line 330 
+  // which handles both tasks and subtasks with proper ID parsing
   
   function findSubtaskById(tasks, parentId, subtaskId) {
     const parentTask = findTaskById(tasks, parentId);
@@ -1168,7 +1140,7 @@ Refer to [`context_gathering.md`](mdc:.roo/rules/context_gathering.md) for detai
     getDebugFlag,
     
     // Legacy utilities (maintained for compatibility)
-    aggregateTelemetry
+    // aggregateTelemetry - removed as not implemented
   };
   ```
 

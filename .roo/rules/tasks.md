@@ -136,7 +136,13 @@ Task Master now uses a **tagged task lists system** for multi-context task manag
       if (newStatus === 'done') {
         const allSubtasksDone = parentTask.subtasks.every(st => st.status === 'done');
         if (allSubtasksDone) {
-          // Suggest updating parent task
+            // Update parent task status to done
+          try {
+            parentTask.status = 'done';
+            log('info', `Parent task ${parentTaskId} marked as done - all subtasks completed`);
+          } catch (error) {
+            log('warn', `Failed to update parent task ${parentTaskId} status: ${error.message}`);
+          }
         }
       }
     } else {
