@@ -48,5 +48,11 @@ export default {
 	verbose: true,
 
 	// Setup file
-	setupFilesAfterEnv: ['<rootDir>/tests/setup.js']
+	setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
+
+	// Force exit after tests complete to handle open handles
+	forceExit: true,
+
+	// Set default test timeout
+	testTimeout: 10000
 };
