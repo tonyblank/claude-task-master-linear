@@ -38,7 +38,7 @@
               1
             ],
             "details": "Create migration utilities for old config formats. Implement version detection and automatic upgrading. Document breaking changes and provide migration guides. Test with various legacy configurations to ensure compatibility.",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 3,
@@ -1792,7 +1792,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-19T02:45:55.810Z",
+      "updated": "2025-06-19T03:05:50.509Z",
       "description": "Tasks for master context"
     }
   }
