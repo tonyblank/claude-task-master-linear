@@ -127,6 +127,7 @@ Taskmaster configuration (excluding API keys) is primarily managed through the `
 
   ```javascript
   import chalk from 'chalk';
+  import { CONFIG } from './config-manager.js';
   
   // ✅ DO: Implement a proper logging utility
   const LOG_LEVELS = {
@@ -1100,8 +1101,8 @@ Refer to [`context_gathering.md`](mdc:.roo/rules/context_gathering.md) for detai
   - ✅ DO: Include new tagged system utilities
 
   ```javascript
-  // ✅ DO: Export utilities in logical groups
-  module.exports = {
+  // ✅ DO: Export utilities in logical groups using ES modules
+  export {
     // File system utilities
     readJSON,
     writeJSON,
@@ -1139,7 +1140,7 @@ Refer to [`context_gathering.md`](mdc:.roo/rules/context_gathering.md) for detai
     
     // Environment utilities
     resolveEnvVariable,
-    getDebugFlag,
+    getDebugFlag
     
     // Legacy utilities (maintained for compatibility)
     // aggregateTelemetry - removed as not implemented
