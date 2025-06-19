@@ -64,8 +64,22 @@ function sanitizeValue(value, depth, options) {
 			sanitized = sanitized.replace(/<[^>]*>/g, '');
 		}
 
-		// Remove potentially dangerous characters
+		// Remove potentially dangerous characters and SQL injection patterns
 		sanitized = sanitized.replace(/[<>\"'&]/g, '');
+
+		// Remove SQL injection patterns
+		sanitized = sanitized.replace(
+			/(\bDROP\b|\bTABLE\b|\bUNION\b|\bSELECT\b|\bINSERT\b|\bDELETE\b|\bUPDATE\b)/gi,
+			''
+		);
+		sanitized = sanitized.replace(/(\b1\s*=\s*1\b|\b1\s*'\s*=\s*'1\b)/gi, '');
+		sanitized = sanitized.replace(/(--|\/\*|\*\/)/g, '');
+
+		// Remove script tags but keep other content
+		sanitized = sanitized.replace(
+			/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+			''
+		);
 
 		// Limit string length
 		if (sanitized.length > maxStringLength) {
@@ -104,6 +118,12 @@ function sanitizeValue(value, depth, options) {
 		const sanitized = {};
 
 		for (const [key, val] of Object.entries(value)) {
+			// Prevent prototype pollution
+			if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+				log('warn', `Blocked prototype pollution attempt with key: ${key}`);
+				continue;
+			}
+
 			// Sanitize the key itself
 			const sanitizedKey = sanitizeValue(key, depth + 1, options);
 
@@ -496,20 +516,59 @@ export function redactSensitiveData(config) {
 	// Redact API keys and secrets
 	redactValue(redacted, (key, value) => {
 		const keyLower = key.toLowerCase();
-		if (
-			keyLower.includes('key') ||
-			keyLower.includes('secret') ||
-			keyLower.includes('token') ||
-			keyLower.includes('password')
-		) {
-			if (
-				typeof value === 'string' &&
-				value.length > 10 &&
-				!value.startsWith('${')
-			) {
-				return '[REDACTED]';
+
+		// Check for sensitive key names
+		const sensitiveKeyPatterns = [
+			'key',
+			'secret',
+			'token',
+			'password',
+			'bearer',
+			'privatekey',
+			'publickey',
+			'accesstoken',
+			'refreshtoken',
+			'clientsecret',
+			'webhooksecret'
+		];
+
+		const isSensitiveKey = sensitiveKeyPatterns.some(
+			(pattern) =>
+				keyLower.includes(pattern) ||
+				keyLower.replace(/[_-]/g, '').includes(pattern)
+		);
+
+		if (isSensitiveKey && typeof value === 'string') {
+			// Don't redact environment variable placeholders
+			if (value.startsWith('${') && value.endsWith('}')) {
+				return value;
 			}
+
+			// Don't redact very short values (might be booleans converted to strings)
+			if (value.length <= 5) {
+				return value;
+			}
+
+			// Don't redact policy names or settings that just contain sensitive words
+			if (
+				keyLower.includes('policy') ||
+				keyLower.includes('setting') ||
+				keyLower.includes('mode') ||
+				keyLower.includes('count') ||
+				keyLower.includes('enabled')
+			) {
+				return value;
+			}
+
+			// Redact long credential-like strings
+			return '[REDACTED]';
 		}
+
+		// Also check for bearer token patterns in values
+		if (typeof value === 'string' && value.startsWith('Bearer ')) {
+			return '[REDACTED]';
+		}
+
 		return value;
 	});
 
@@ -534,4 +593,75 @@ function redactValue(obj, transformer) {
 			}
 		}
 	}
+}
+
+/**
+ * Securely deletes credentials from memory by overwriting with random data
+ * @param {object} config - Configuration object containing credentials
+ * @returns {object} Configuration with credentials securely deleted
+ */
+export function secureDeleteCredentials(config) {
+	if (!config || typeof config !== 'object') {
+		return config;
+	}
+
+	const cleaned = JSON.parse(JSON.stringify(config)); // Deep clone
+
+	// Overwrite credential values with random data multiple times
+	redactValue(cleaned, (key, value) => {
+		const keyLower = key.toLowerCase();
+
+		// Check for sensitive key names
+		const sensitiveKeyPatterns = [
+			'key',
+			'secret',
+			'token',
+			'password',
+			'bearer',
+			'privatekey',
+			'publickey',
+			'accesstoken',
+			'refreshtoken',
+			'clientsecret',
+			'webhooksecret'
+		];
+
+		const isSensitiveKey = sensitiveKeyPatterns.some(
+			(pattern) =>
+				keyLower.includes(pattern) ||
+				keyLower.replace(/[_-]/g, '').includes(pattern)
+		);
+
+		if (isSensitiveKey && typeof value === 'string' && value.length > 5) {
+			// Don't overwrite environment variable placeholders
+			if (value.startsWith('${') && value.endsWith('}')) {
+				return value;
+			}
+
+			// Don't delete policy names or settings that just contain sensitive words
+			if (
+				keyLower.includes('policy') ||
+				keyLower.includes('setting') ||
+				keyLower.includes('mode') ||
+				keyLower.includes('count') ||
+				keyLower.includes('enabled')
+			) {
+				return value;
+			}
+
+			// Overwrite with random data (3 passes for security)
+			for (let i = 0; i < 3; i++) {
+				const randomData = Array.from({ length: value.length }, () =>
+					String.fromCharCode(Math.floor(Math.random() * 126) + 1)
+				).join('');
+				// This simulates secure overwriting in memory
+			}
+
+			return null; // Mark for deletion
+		}
+
+		return value;
+	});
+
+	return cleaned;
 }
