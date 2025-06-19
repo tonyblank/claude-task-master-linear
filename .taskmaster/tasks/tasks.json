@@ -20,7 +20,7 @@
         "testStrategy": "Unit tests for config manipulation functions ensuring they don't corrupt existing config. Test environment variable loading with mock .env files. Test config validation with various incomplete configurations. Verify .env is not committed to version control",
         "priority": "high",
         "dependencies": [],
-        "status": "pending",
+        "status": "in-progress",
         "subtasks": [
           {
             "id": 1,
@@ -28,7 +28,7 @@
             "description": "Create a comprehensive schema design for the Linear configuration system that supports all required features while maintaining flexibility for future extensions.",
             "dependencies": [],
             "details": "Define JSON schema for configuration including types, required fields, and nested structures. Document the schema with examples and edge cases. Consider performance implications of schema design. Include support for environment-specific configurations.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 2,
@@ -1792,7 +1792,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-19T00:45:17.328Z",
+      "updated": "2025-06-19T02:45:55.810Z",
       "description": "Tasks for master context"
     }
   }
