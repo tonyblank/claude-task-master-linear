@@ -63,6 +63,51 @@ const DEFAULTS = {
 		projectName: 'Task Master',
 		ollamaBaseURL: 'http://localhost:11434/api',
 		bedrockBaseURL: 'https://bedrock.us-east-1.amazonaws.com'
+	},
+	integrations: {
+		linear: {
+			enabled: false,
+			apiKey: '${LINEAR_API_KEY}',
+			team: {
+				id: null,
+				name: null
+			},
+			project: {
+				id: null,
+				name: null
+			},
+			labels: {
+				enabled: true,
+				sourceLabel: 'taskmaster',
+				priorityMapping: {
+					high: 'High Priority',
+					medium: 'Medium Priority',
+					low: 'Low Priority'
+				},
+				statusMapping: {
+					pending: 'Todo',
+					'in-progress': 'In Progress',
+					review: 'In Review',
+					done: 'Done',
+					cancelled: 'Cancelled',
+					deferred: 'Backlog'
+				}
+			},
+			sync: {
+				autoSync: true,
+				syncOnStatusChange: true,
+				syncSubtasks: true,
+				syncDependencies: true,
+				batchSize: 10,
+				retryAttempts: 3,
+				retryDelay: 1000
+			},
+			webhooks: {
+				enabled: false,
+				url: null,
+				secret: null
+			}
+		}
 	}
 };
 
@@ -124,7 +169,41 @@ function _loadAndValidateConfig(explicitRoot = null) {
 							? { ...defaults.models.fallback, ...parsedConfig.models.fallback }
 							: { ...defaults.models.fallback }
 				},
-				global: { ...defaults.global, ...parsedConfig?.global }
+				global: { ...defaults.global, ...parsedConfig?.global },
+				integrations: {
+					linear: {
+						...defaults.integrations.linear,
+						...parsedConfig?.integrations?.linear,
+						team: {
+							...defaults.integrations.linear.team,
+							...parsedConfig?.integrations?.linear?.team
+						},
+						project: {
+							...defaults.integrations.linear.project,
+							...parsedConfig?.integrations?.linear?.project
+						},
+						labels: {
+							...defaults.integrations.linear.labels,
+							...parsedConfig?.integrations?.linear?.labels,
+							priorityMapping: {
+								...defaults.integrations.linear.labels.priorityMapping,
+								...parsedConfig?.integrations?.linear?.labels?.priorityMapping
+							},
+							statusMapping: {
+								...defaults.integrations.linear.labels.statusMapping,
+								...parsedConfig?.integrations?.linear?.labels?.statusMapping
+							}
+						},
+						sync: {
+							...defaults.integrations.linear.sync,
+							...parsedConfig?.integrations?.linear?.sync
+						},
+						webhooks: {
+							...defaults.integrations.linear.webhooks,
+							...parsedConfig?.integrations?.linear?.webhooks
+						}
+					}
+				}
 			};
 			configSource = `file (${configPath})`; // Update source info
 
@@ -750,6 +829,265 @@ function getBaseUrlForRole(role, explicitRoot = null) {
 		: undefined;
 }
 
+// --- Linear Integration Configuration Getters ---
+
+/**
+ * Gets the Linear integration configuration
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {object} The Linear configuration object
+ */
+function getLinearConfig(explicitRoot = null) {
+	const config = getConfig(explicitRoot);
+	return {
+		...DEFAULTS.integrations.linear,
+		...(config?.integrations?.linear || {})
+	};
+}
+
+/**
+ * Gets the Linear API key, resolving environment variables
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {string|null} The resolved Linear API key
+ */
+function getLinearApiKey(explicitRoot = null) {
+	const linearConfig = getLinearConfig(explicitRoot);
+	const apiKeyValue = linearConfig.apiKey;
+
+	// Resolve environment variable if placeholder format is used
+	if (
+		typeof apiKeyValue === 'string' &&
+		apiKeyValue.startsWith('${') &&
+		apiKeyValue.endsWith('}')
+	) {
+		const envVarName = apiKeyValue.slice(2, -1); // Remove ${ and }
+		return resolveEnvVariable(envVarName, null, explicitRoot);
+	}
+
+	return apiKeyValue;
+}
+
+/**
+ * Gets the Linear team configuration
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {object} The team configuration object
+ */
+function getLinearTeam(explicitRoot = null) {
+	const linearConfig = getLinearConfig(explicitRoot);
+	return linearConfig.team || { id: null, name: null };
+}
+
+/**
+ * Gets the Linear team ID
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {string|null} The Linear team ID
+ */
+function getLinearTeamId(explicitRoot = null) {
+	return getLinearTeam(explicitRoot).id;
+}
+
+/**
+ * Gets the Linear project configuration
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {object} The project configuration object
+ */
+function getLinearProject(explicitRoot = null) {
+	const linearConfig = getLinearConfig(explicitRoot);
+	return linearConfig.project || { id: null, name: null };
+}
+
+/**
+ * Gets the Linear project ID
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {string|null} The Linear project ID
+ */
+function getLinearProjectId(explicitRoot = null) {
+	return getLinearProject(explicitRoot).id;
+}
+
+/**
+ * Checks if Linear integration is enabled
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {boolean} True if Linear integration is enabled
+ */
+function isLinearEnabled(explicitRoot = null) {
+	const linearConfig = getLinearConfig(explicitRoot);
+	return linearConfig.enabled === true;
+}
+
+/**
+ * Checks if Linear auto-sync is enabled
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {boolean} True if auto-sync is enabled
+ */
+function isLinearAutoSyncEnabled(explicitRoot = null) {
+	const linearConfig = getLinearConfig(explicitRoot);
+	return linearConfig.sync?.autoSync === true;
+}
+
+/**
+ * Checks if Linear subtask sync is enabled
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {boolean} True if subtask sync is enabled
+ */
+function isLinearSubtaskSyncEnabled(explicitRoot = null) {
+	const linearConfig = getLinearConfig(explicitRoot);
+	return linearConfig.sync?.syncSubtasks === true;
+}
+
+/**
+ * Gets the Linear status mapping configuration
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {object} The status mapping object
+ */
+function getLinearStatusMapping(explicitRoot = null) {
+	const linearConfig = getLinearConfig(explicitRoot);
+	return (
+		linearConfig.labels?.statusMapping ||
+		DEFAULTS.integrations.linear.labels.statusMapping
+	);
+}
+
+/**
+ * Gets the Linear priority mapping configuration
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {object} The priority mapping object
+ */
+function getLinearPriorityMapping(explicitRoot = null) {
+	const linearConfig = getLinearConfig(explicitRoot);
+	return (
+		linearConfig.labels?.priorityMapping ||
+		DEFAULTS.integrations.linear.labels.priorityMapping
+	);
+}
+
+/**
+ * Gets the Linear sync settings
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {object} The sync settings object
+ */
+function getLinearSyncSettings(explicitRoot = null) {
+	const linearConfig = getLinearConfig(explicitRoot);
+	return linearConfig.sync || DEFAULTS.integrations.linear.sync;
+}
+
+// --- Linear Configuration Validation ---
+
+/**
+ * Validates a Linear API key format
+ * @param {string} apiKey - The API key to validate
+ * @returns {boolean} True if the API key format is valid
+ */
+function validateLinearApiKey(apiKey) {
+	if (!apiKey || typeof apiKey !== 'string') {
+		return false;
+	}
+
+	// Linear API keys start with "lin_api_" and are typically ~48 characters
+	return apiKey.startsWith('lin_api_') && apiKey.length >= 40;
+}
+
+/**
+ * Validates a UUID format (for team and project IDs)
+ * @param {string} uuid - The UUID to validate
+ * @returns {boolean} True if the UUID format is valid
+ */
+function validateUuid(uuid) {
+	if (!uuid || typeof uuid !== 'string') {
+		return false;
+	}
+
+	const uuidRegex =
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+	return uuidRegex.test(uuid);
+}
+
+/**
+ * Validates Linear team ID format
+ * @param {string} teamId - The team ID to validate
+ * @returns {boolean} True if the team ID format is valid
+ */
+function validateLinearTeamId(teamId) {
+	return validateUuid(teamId);
+}
+
+/**
+ * Validates Linear project ID format
+ * @param {string} projectId - The project ID to validate
+ * @returns {boolean} True if the project ID format is valid
+ */
+function validateLinearProjectId(projectId) {
+	return validateUuid(projectId);
+}
+
+/**
+ * Validates the entire Linear configuration
+ * @param {object} linearConfig - The Linear configuration to validate
+ * @returns {{valid: boolean, errors: string[]}} Validation result
+ */
+function validateLinearConfig(linearConfig) {
+	const errors = [];
+
+	if (!linearConfig || typeof linearConfig !== 'object') {
+		errors.push('Linear configuration must be an object');
+		return { valid: false, errors };
+	}
+
+	// Validate API key if provided
+	if (linearConfig.apiKey && !validateLinearApiKey(linearConfig.apiKey)) {
+		// Only validate format if it's not an environment variable placeholder
+		if (!linearConfig.apiKey.startsWith('${')) {
+			errors.push('Linear API key format is invalid');
+		}
+	}
+
+	// Validate team ID if provided
+	if (linearConfig.team?.id && !validateLinearTeamId(linearConfig.team.id)) {
+		errors.push('Linear team ID format is invalid');
+	}
+
+	// Validate project ID if provided
+	if (
+		linearConfig.project?.id &&
+		!validateLinearProjectId(linearConfig.project.id)
+	) {
+		errors.push('Linear project ID format is invalid');
+	}
+
+	// Validate sync settings
+	if (linearConfig.sync) {
+		const { batchSize, retryAttempts, retryDelay } = linearConfig.sync;
+
+		if (
+			batchSize !== undefined &&
+			(typeof batchSize !== 'number' || batchSize < 1 || batchSize > 50)
+		) {
+			errors.push('Linear sync batchSize must be a number between 1 and 50');
+		}
+
+		if (
+			retryAttempts !== undefined &&
+			(typeof retryAttempts !== 'number' ||
+				retryAttempts < 1 ||
+				retryAttempts > 10)
+		) {
+			errors.push(
+				'Linear sync retryAttempts must be a number between 1 and 10'
+			);
+		}
+
+		if (
+			retryDelay !== undefined &&
+			(typeof retryDelay !== 'number' || retryDelay < 100 || retryDelay > 5000)
+		) {
+			errors.push(
+				'Linear sync retryDelay must be a number between 100 and 5000 milliseconds'
+			);
+		}
+	}
+
+	return { valid: errors.length === 0, errors };
+}
+
 export {
 	// Core config access
 	getConfig,
@@ -794,5 +1132,23 @@ export {
 	// ADD: Function to get all provider names
 	getAllProviders,
 	getVertexProjectId,
-	getVertexLocation
+	getVertexLocation,
+	// Linear Integration Configuration
+	getLinearConfig,
+	getLinearApiKey,
+	getLinearTeam,
+	getLinearTeamId,
+	getLinearProject,
+	getLinearProjectId,
+	isLinearEnabled,
+	isLinearAutoSyncEnabled,
+	isLinearSubtaskSyncEnabled,
+	getLinearStatusMapping,
+	getLinearPriorityMapping,
+	getLinearSyncSettings,
+	// Linear Configuration Validation
+	validateLinearApiKey,
+	validateLinearTeamId,
+	validateLinearProjectId,
+	validateLinearConfig
 };
