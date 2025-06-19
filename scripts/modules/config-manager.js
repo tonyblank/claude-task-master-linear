@@ -216,8 +216,8 @@ function _loadAndValidateConfig(explicitRoot = null) {
 				);
 			}
 
-			// --- Validation (Warn if file content is invalid) ---
-			// Use log.warn for consistency
+			// --- Enhanced Validation and Deprecation Warnings ---
+			// Basic provider validation (kept for backward compatibility)
 			if (!validateProvider(config.models.main.provider)) {
 				console.warn(
 					chalk.yellow(
@@ -246,6 +246,10 @@ function _loadAndValidateConfig(explicitRoot = null) {
 				config.models.fallback.provider = undefined;
 				config.models.fallback.modelId = undefined;
 			}
+
+			// --- Deprecation and Best Practice Warnings ---
+			_showDeprecationWarnings(config, configPath, isLegacy);
+			_showConfigurationWarnings(config, rootToUse);
 		} catch (error) {
 			// Use console.error for actual errors during parsing
 			console.error(
@@ -1088,6 +1092,236 @@ function validateLinearConfig(linearConfig) {
 	return { valid: errors.length === 0, errors };
 }
 
+// --- Deprecation and Warning Helper Functions ---
+
+/**
+ * Shows deprecation warnings for configuration
+ * @param {object} config - Configuration object
+ * @param {string} configPath - Path to configuration file
+ * @param {boolean} isLegacy - Whether using legacy config location
+ */
+function _showDeprecationWarnings(config, configPath, isLegacy) {
+	// Legacy configuration file warning (already handled above, but adding context)
+	if (isLegacy) {
+		// Additional context for legacy users
+		console.warn(
+			chalk.yellow(
+				'💡 Tip: Run "task-master migrate" to automatically move to the new .taskmaster/ structure'
+			)
+		);
+	}
+
+	// Deprecated model IDs
+	const deprecatedModels = {
+		'claude-3-sonnet-20240229': 'claude-3-5-sonnet or claude-3-7-sonnet',
+		'claude-3-opus-20240229': 'claude-3-5-sonnet or claude-3-7-sonnet',
+		'gpt-3.5-turbo': 'gpt-4 or gpt-4-turbo',
+		'text-davinci-003': 'gpt-4 or gpt-4-turbo'
+	};
+
+	['main', 'research', 'fallback'].forEach((role) => {
+		const modelId = config.models?.[role]?.modelId;
+		if (modelId && deprecatedModels[modelId]) {
+			console.warn(
+				chalk.yellow(
+					`⚠️  DEPRECATION: Model "${modelId}" for ${role} role is deprecated. Consider upgrading to: ${deprecatedModels[modelId]}`
+				)
+			);
+		}
+	});
+
+	// Deprecated configuration fields
+	if (config.global?.defaultNumTasks) {
+		console.warn(
+			chalk.yellow(
+				'⚠️  DEPRECATION: "defaultNumTasks" is deprecated. Use "defaultSubtasks" instead'
+			)
+		);
+	}
+
+	// Check for old Linear configuration format
+	if (config.linear && !config.integrations?.linear) {
+		console.warn(
+			chalk.yellow(
+				'⚠️  DEPRECATION: Linear configuration should be moved to "integrations.linear" section'
+			)
+		);
+	}
+}
+
+/**
+ * Shows configuration warnings and suggestions
+ * @param {object} config - Configuration object
+ * @param {string} projectRoot - Project root directory
+ */
+function _showConfigurationWarnings(config, projectRoot) {
+	// Performance warnings
+	if (config.models?.main?.maxTokens > 100000) {
+		console.warn(
+			chalk.yellow(
+				`⚠️  Performance: Large maxTokens (${config.models.main.maxTokens}) may impact response speed and cost`
+			)
+		);
+	}
+
+	// Security warnings
+	['models', 'integrations'].forEach((section) => {
+		if (config[section]) {
+			_checkForHardcodedSecrets(config[section], section);
+		}
+	});
+
+	// Linear configuration warnings
+	if (config.integrations?.linear?.enabled) {
+		const linear = config.integrations.linear;
+
+		// Missing team/project warnings
+		if (!linear.team?.id) {
+			console.warn(
+				chalk.yellow(
+					'⚠️  Linear: Team ID not configured. Some Linear features may not work correctly'
+				)
+			);
+		}
+
+		if (!linear.project?.id) {
+			console.warn(
+				chalk.yellow(
+					'⚠️  Linear: Project ID not configured. Task synchronization may be limited'
+				)
+			);
+		}
+
+		// Performance warnings for Linear
+		if (linear.sync?.batchSize > 25) {
+			console.warn(
+				chalk.yellow(
+					`⚠️  Linear: Large batch size (${linear.sync.batchSize}) may hit API rate limits. Consider 10-25`
+				)
+			);
+		}
+
+		if (linear.sync?.retryDelay < 500) {
+			console.warn(
+				chalk.yellow(
+					`⚠️  Linear: Low retry delay (${linear.sync.retryDelay}ms) may trigger rate limiting`
+				)
+			);
+		}
+	}
+
+	// Same provider for main and fallback warning
+	if (config.models?.main?.provider && config.models?.fallback?.provider) {
+		if (
+			config.models.main.provider === config.models.fallback.provider &&
+			config.models.main.modelId === config.models.fallback.modelId
+		) {
+			console.warn(
+				chalk.yellow(
+					'⚠️  Configuration: Fallback model is identical to main model. Consider using a different model for better resilience'
+				)
+			);
+		}
+	}
+
+	// Environment variable suggestions
+	if (config.integrations?.linear?.enabled) {
+		const hasLinearKey =
+			process.env.LINEAR_API_KEY || process.env.TASKMASTER_LINEAR_API_KEY;
+		if (!hasLinearKey) {
+			console.warn(
+				chalk.yellow(
+					'💡 Tip: Set LINEAR_API_KEY environment variable for Linear integration'
+				)
+			);
+		}
+	}
+}
+
+/**
+ * Checks for hardcoded secrets in configuration
+ * @param {object} obj - Object to check
+ * @param {string} section - Section name for context
+ * @param {string} path - Current path in object
+ */
+function _checkForHardcodedSecrets(obj, section, path = '') {
+	for (const [key, value] of Object.entries(obj)) {
+		const currentPath = path ? `${path}.${key}` : key;
+
+		if (typeof value === 'string') {
+			// Check for potential hardcoded API keys
+			if (
+				key.toLowerCase().includes('key') ||
+				key.toLowerCase().includes('secret')
+			) {
+				if (
+					!value.startsWith('${') &&
+					value.length > 20 &&
+					!/^YOUR_.*_HERE$/.test(value)
+				) {
+					console.warn(
+						chalk.red(
+							`🚨 SECURITY WARNING: Potential hardcoded API key detected in ${section}.${currentPath}. Use environment variable placeholders instead!`
+						)
+					);
+				}
+			}
+
+			// Check for old placeholder patterns
+			if (value.includes('YOUR_') && value.includes('_HERE')) {
+				console.warn(
+					chalk.yellow(
+						`💡 Tip: Replace placeholder "${value}" in ${section}.${currentPath} with actual environment variable`
+					)
+				);
+			}
+		} else if (typeof value === 'object' && value !== null) {
+			_checkForHardcodedSecrets(value, section, currentPath);
+		}
+	}
+}
+
+/**
+ * Validates complete configuration using comprehensive validation utilities
+ * @param {object} config - Configuration to validate
+ * @param {object} options - Validation options
+ * @returns {object} Validation result with errors, warnings, and suggestions
+ */
+async function validateCompleteConfig(config, options = {}) {
+	const { projectRoot = null, strict = false, showWarnings = true } = options;
+
+	try {
+		// Import validation utilities dynamically to avoid circular dependencies
+		const validationModule = await import('./validation/index.js');
+		const { validateConfig, formatValidationErrors } = validationModule;
+
+		const validationResult = validateConfig(config, {
+			projectRoot,
+			strict,
+			checkEnvironment: true
+		});
+
+		// Format and display warnings if requested
+		if (showWarnings && validationResult.hasAnyIssues()) {
+			const formatted = formatValidationErrors(validationResult, {
+				includeWarnings: true,
+				includeSuggestions: true,
+				colorize: true
+			});
+			console.log(formatted);
+		}
+
+		return validationResult;
+	} catch (error) {
+		// Fallback to basic validation if comprehensive validation fails
+		log(
+			'debug',
+			`Comprehensive validation failed: ${error.message}, using basic validation`
+		);
+		return { valid: true, errors: [], warnings: [], suggestions: [] };
+	}
+}
+
 export {
 	// Core config access
 	getConfig,
@@ -1150,5 +1384,7 @@ export {
 	validateLinearApiKey,
 	validateLinearTeamId,
 	validateLinearProjectId,
-	validateLinearConfig
+	validateLinearConfig,
+	// Enhanced Configuration Validation
+	validateCompleteConfig
 };

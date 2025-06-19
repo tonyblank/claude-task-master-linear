@@ -49,7 +49,7 @@
               2
             ],
             "details": "Set up dotenv package integration. Create a secure credential loading mechanism. Implement fallback strategies for missing environment variables. Document security best practices for credential management.",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 4,
@@ -60,7 +60,7 @@
               2
             ],
             "details": "Implement schema validation using JSON Schema or similar. Create custom validators for complex business rules. Design clear, actionable error messages. Add warning system for deprecated or suboptimal configurations.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 5,
@@ -1792,7 +1792,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-19T13:38:08.936Z",
+      "updated": "2025-06-19T14:10:33.223Z",
       "description": "Tasks for master context"
     }
   }
