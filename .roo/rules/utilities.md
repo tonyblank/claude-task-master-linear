@@ -126,6 +126,8 @@ Taskmaster configuration (excluding API keys) is primarily managed through the `
   - For complete implementation details, see the **Handling Logging Context (`mcpLog`)** section in [`mcp.md`](mdc:.roo/rules/mcp.md).
 
   ```javascript
+  import chalk from 'chalk';
+  
   // ✅ DO: Implement a proper logging utility
   const LOG_LEVELS = {
     debug: 0,
@@ -976,7 +978,7 @@ Refer to [`context_gathering.md`](mdc:.roo/rules/context_gathering.md) for detai
 
   ```javascript
   // ✅ DO: Implement dependency utilities
-  function findCycles(tasks) {
+  function findSubtaskCycles(tasks) {
     const cycles = [];
     const visited = new Set();
     const recStack = new Set();
