@@ -129,7 +129,7 @@
               2
             ],
             "details": "Implement event emitters, event bus, and subscription mechanisms. Ensure proper async handling with queuing capabilities. Include retry logic and delivery guarantees where appropriate. Design for performance under high event volume.",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 4,
@@ -140,7 +140,7 @@
               3
             ],
             "details": "Create error boundaries around integration execution, implement isolation patterns, add logging and monitoring hooks, and design recovery mechanisms. Include circuit breaker patterns to prevent cascading failures.",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 5,
@@ -1792,7 +1792,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-20T16:35:26.263Z",
+      "updated": "2025-06-20T17:44:56.738Z",
       "description": "Tasks for master context"
     }
   }

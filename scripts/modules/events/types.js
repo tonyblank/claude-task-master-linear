@@ -1,6 +1,6 @@
 /**
  * @fileoverview Event system type definitions and interfaces
- * 
+ *
  * This module defines the event types, payload structures, and configuration
  * interfaces for the TaskMaster event-driven architecture.
  */
@@ -120,58 +120,58 @@
  * Event type constants
  */
 export const EVENT_TYPES = {
-  // Task lifecycle events
-  TASK_CREATED: 'task:created',
-  TASK_UPDATED: 'task:updated',
-  TASK_STATUS_CHANGED: 'task:status:changed',
-  TASK_REMOVED: 'task:removed',
+	// Task lifecycle events
+	TASK_CREATED: 'task:created',
+	TASK_UPDATED: 'task:updated',
+	TASK_STATUS_CHANGED: 'task:status:changed',
+	TASK_REMOVED: 'task:removed',
 
-  // Subtask events
-  SUBTASK_CREATED: 'subtask:created',
-  SUBTASK_UPDATED: 'subtask:updated',
-  SUBTASK_STATUS_CHANGED: 'subtask:status:changed',
-  SUBTASK_REMOVED: 'subtask:removed',
+	// Subtask events
+	SUBTASK_CREATED: 'subtask:created',
+	SUBTASK_UPDATED: 'subtask:updated',
+	SUBTASK_STATUS_CHANGED: 'subtask:status:changed',
+	SUBTASK_REMOVED: 'subtask:removed',
 
-  // Dependency events
-  DEPENDENCY_ADDED: 'dependency:added',
-  DEPENDENCY_REMOVED: 'dependency:removed',
-  DEPENDENCIES_SATISFIED: 'dependencies:satisfied',
+	// Dependency events
+	DEPENDENCY_ADDED: 'dependency:added',
+	DEPENDENCY_REMOVED: 'dependency:removed',
+	DEPENDENCIES_SATISFIED: 'dependencies:satisfied',
 
-  // Bulk operations
-  TASKS_BULK_CREATED: 'tasks:bulk:created',
-  TASKS_BULK_UPDATED: 'tasks:bulk:updated',
-  TASKS_BULK_STATUS_CHANGED: 'tasks:bulk:status:changed',
+	// Bulk operations
+	TASKS_BULK_CREATED: 'tasks:bulk:created',
+	TASKS_BULK_UPDATED: 'tasks:bulk:updated',
+	TASKS_BULK_STATUS_CHANGED: 'tasks:bulk:status:changed',
 
-  // Tag events
-  TAG_CREATED: 'tag:created',
-  TAG_SWITCHED: 'tag:switched',
-  TAG_DELETED: 'tag:deleted',
+	// Tag events
+	TAG_CREATED: 'tag:created',
+	TAG_SWITCHED: 'tag:switched',
+	TAG_DELETED: 'tag:deleted',
 
-  // Integration events
-  INTEGRATION_SUCCESS: 'integration:success',
-  INTEGRATION_ERROR: 'integration:error'
+	// Integration events
+	INTEGRATION_SUCCESS: 'integration:success',
+	INTEGRATION_ERROR: 'integration:error'
 };
 
 /**
  * Default configuration values
  */
 export const DEFAULT_CONFIG = {
-  eventProcessing: {
-    maxConcurrentHandlers: 5,
-    handlerTimeout: 30000, // 30 seconds
-    retryAttempts: 3,
-    retryBackoff: 'exponential',
-    enableBatching: true,
-    batchSize: 10,
-    batchTimeout: 5000 // 5 seconds
-  },
-  retry: {
-    maxAttempts: 3,
-    backoffStrategy: 'exponential',
-    baseDelay: 1000, // 1 second
-    maxDelay: 30000, // 30 seconds
-    retryableErrors: ['ECONNRESET', 'ENOTFOUND', 'TIMEOUT', 'RATE_LIMIT']
-  }
+	eventProcessing: {
+		maxConcurrentHandlers: 5,
+		handlerTimeout: 30000, // 30 seconds
+		retryAttempts: 3,
+		retryBackoff: 'exponential',
+		enableBatching: true,
+		batchSize: 10,
+		batchTimeout: 5000 // 5 seconds
+	},
+	retry: {
+		maxAttempts: 3,
+		backoffStrategy: 'exponential',
+		baseDelay: 1000, // 1 second
+		maxDelay: 30000, // 30 seconds
+		retryableErrors: ['ECONNRESET', 'ENOTFOUND', 'TIMEOUT', 'RATE_LIMIT']
+	}
 };
 
 /**
@@ -181,25 +181,25 @@ export const DEFAULT_CONFIG = {
  * @returns {boolean} True if valid
  */
 export function validateEventPayload(eventType, payload) {
-  if (!eventType || typeof eventType !== 'string') {
-    return false;
-  }
+	if (!eventType || typeof eventType !== 'string') {
+		return false;
+	}
 
-  if (!payload || typeof payload !== 'object') {
-    return false;
-  }
+	if (!payload || typeof payload !== 'object') {
+		return false;
+	}
 
-  // Basic validation - all events should have context and timestamp
-  if (!payload.context || !payload.timestamp) {
-    return false;
-  }
+	// Basic validation - all events should have context and timestamp
+	if (!payload.context || !payload.timestamp) {
+		return false;
+	}
 
-  // Validate timestamp format
-  if (isNaN(Date.parse(payload.timestamp))) {
-    return false;
-  }
+	// Validate timestamp format
+	if (isNaN(Date.parse(payload.timestamp))) {
+		return false;
+	}
 
-  return true;
+	return true;
 }
 
 /**
@@ -210,12 +210,12 @@ export function validateEventPayload(eventType, payload) {
  * @returns {EventPayload} Standardized event payload
  */
 export function createEventPayload(eventType, data, context) {
-  return {
-    type: eventType,
-    payload: {
-      ...data,
-      context,
-      timestamp: new Date().toISOString()
-    }
-  };
+	return {
+		type: eventType,
+		payload: {
+			...data,
+			context,
+			timestamp: new Date().toISOString()
+		}
+	};
 }
