@@ -118,7 +118,7 @@
               1
             ],
             "details": "Implement a base class with core functionality including initialization, configuration management, lifecycle hooks, and integration with the event system. Define required interfaces and abstract methods that specific integrations must implement.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 3,
@@ -129,7 +129,7 @@
               2
             ],
             "details": "Implement event emitters, event bus, and subscription mechanisms. Ensure proper async handling with queuing capabilities. Include retry logic and delivery guarantees where appropriate. Design for performance under high event volume.",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 4,
@@ -1792,7 +1792,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-20T16:02:08.422Z",
+      "updated": "2025-06-20T16:35:26.263Z",
       "description": "Tasks for master context"
     }
   }
