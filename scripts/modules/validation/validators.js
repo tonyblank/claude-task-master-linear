@@ -592,8 +592,7 @@ function validateSecurityConstraints(config) {
 			if (typeof value === 'string') {
 				// Check for potential API keys that aren't environment variable placeholders
 				if (
-					key.toLowerCase().includes('key') ||
-					key.toLowerCase().includes('secret')
+					/(?:key|secret|token|auth|credential|bearer|password|pass)/i.test(key)
 				) {
 					if (
 						!value.startsWith('${') &&

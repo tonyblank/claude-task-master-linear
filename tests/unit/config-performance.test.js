@@ -327,7 +327,7 @@ describe.skip('Configuration Performance Tests', () => {
 
 		test('should handle extremely deep nesting without stack overflow', () => {
 			// Create config with very deep nesting
-			let deepConfig = {};
+			const deepConfig = {};
 			let current = deepConfig;
 			for (let i = 0; i < 50; i++) {
 				// Reduced depth to avoid potential issues
