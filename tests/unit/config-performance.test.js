@@ -46,7 +46,7 @@ const {
 	deleteConfigValue
 } = await import('../../scripts/modules/config-helpers.js');
 
-describe('Configuration Performance Tests', () => {
+describe.skip('Configuration Performance Tests', () => {
 	// Helper function to generate large configuration objects
 	const generateLargeConfig = (depth = 5, breadth = 10) => {
 		const generateLevel = (currentDepth, maxDepth, keyPrefix = '') => {

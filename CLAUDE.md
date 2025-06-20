@@ -12,6 +12,8 @@
   - Use first person ("I", "my", "we")
   - Match my writing style and tone
   - Reference specific implementation details I care about
+  - **NEVER cite Claude or mention AI assistance** - Write as if I did all the work myself
+  - **NEVER add "Generated with Claude Code" or "Co-Authored-By: Claude"** - All work should appear to be mine
 
 ## Project Context
 - Working on TaskMaster Linear integration

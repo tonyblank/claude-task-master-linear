@@ -218,7 +218,7 @@ function normalizeModelConfigs(config) {
 				modelConfig.maxTokens < 1
 			) {
 				log('warn', `Invalid maxTokens for ${role}, using default`);
-				delete modelConfig.maxTokens;
+				modelConfig.maxTokens = undefined;
 			}
 		}
 
@@ -226,7 +226,7 @@ function normalizeModelConfigs(config) {
 			modelConfig.temperature = Number(modelConfig.temperature);
 			if (!Number.isFinite(modelConfig.temperature)) {
 				log('warn', `Invalid temperature for ${role}, using default`);
-				delete modelConfig.temperature;
+				modelConfig.temperature = undefined;
 			}
 		}
 
@@ -291,7 +291,7 @@ function normalizeGlobalConfig(config) {
 				'warn',
 				`Invalid defaultPriority: ${global.defaultPriority}, using default`
 			);
-			delete global.defaultPriority;
+			global.defaultPriority = undefined;
 		}
 	}
 }

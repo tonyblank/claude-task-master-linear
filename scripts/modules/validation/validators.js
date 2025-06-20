@@ -534,13 +534,22 @@ function validateConfigConsistency(config) {
 	if (config.integrations?.linear) {
 		const linear = config.integrations.linear;
 
-		// Check if webhooks are enabled but URL is missing
-		if (linear.webhooks?.enabled && !linear.webhooks?.url) {
-			result.addError(
-				'integrations.linear.webhooks.url',
-				'Webhook URL is required when webhooks are enabled',
-				'MISSING_WEBHOOK_URL'
-			);
+		// Check if webhooks are enabled but URL or secret is missing
+		if (linear.webhooks?.enabled) {
+			if (!linear.webhooks?.url) {
+				result.addError(
+					'integrations.linear.webhooks.url',
+					'Webhook URL is required when webhooks are enabled',
+					'MISSING_WEBHOOK_URL'
+				);
+			}
+			if (!linear.webhooks?.secret) {
+				result.addError(
+					'integrations.linear.webhooks.secret',
+					'Webhook secret is required when webhooks are enabled',
+					'MISSING_WEBHOOK_SECRET'
+				);
+			}
 		}
 
 		// Check if sync is enabled but Linear integration is disabled
@@ -696,7 +705,8 @@ function resolveApiKey(apiKeyValue, projectRoot) {
 		apiKeyValue.endsWith('}')
 	) {
 		const envVarName = apiKeyValue.slice(2, -1);
-		return resolveEnvVariable(envVarName, null, projectRoot);
+		const resolved = resolveEnvVariable(envVarName, null, projectRoot);
+		return resolved && resolved.trim() !== '' ? resolved : null;
 	}
 	return apiKeyValue;
 }

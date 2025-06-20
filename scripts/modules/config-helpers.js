@@ -378,19 +378,22 @@ export function getTypedConfigValue(
 		switch (expectedType) {
 			case 'string':
 				return String(value);
-			case 'number':
+			case 'number': {
 				const num = Number(value);
-				return isNaN(num) ? defaultValue : num;
-			case 'boolean':
+				return Number.isNaN(num) ? defaultValue : num;
+			}
+			case 'boolean': {
 				if (typeof value === 'string') {
 					return value.toLowerCase() === 'true';
 				}
 				return Boolean(value);
-			case 'object':
+			}
+			case 'object': {
 				if (value === null || Array.isArray(value)) {
 					return value;
 				}
 				return typeof value === 'object' ? value : defaultValue;
+			}
 			default:
 				log(
 					'warn',
@@ -443,7 +446,9 @@ function getNestedValue(obj, path) {
  * @returns {object} New object with the value set
  */
 function setNestedValue(obj, path, value) {
-	const result = JSON.parse(JSON.stringify(obj)); // Deep clone
+	const result = structuredClone
+		? structuredClone(obj)
+		: JSON.parse(JSON.stringify(obj));
 	const keys = path.split('.');
 	let current = result;
 

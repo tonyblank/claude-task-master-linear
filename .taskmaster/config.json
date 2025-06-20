@@ -17,8 +17,8 @@
 		}
 	},
 	"global": {
-		"logLevel": "debug",
-		"debug": true
+		"logLevel": "info",
+		"debug": false
 	},
 	"integrations": {
 		"linear": {

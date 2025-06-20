@@ -5,6 +5,52 @@
 import chalk from 'chalk';
 
 /**
+ * Format a section of issues (errors, warnings, or suggestions)
+ * @param {Array} issues - Array of issues to format
+ * @param {string} sectionTitle - Title for the section
+ * @param {string} issueType - Type of issue (error, warning, suggestion)
+ * @param {boolean} colorize - Whether to apply colors
+ * @param {boolean} detailed - Whether to include detailed info
+ * @param {number} maxItems - Maximum items to show for errors
+ * @returns {Array} Array of formatted lines
+ */
+function formatIssueSection(
+	issues,
+	sectionTitle,
+	issueType,
+	colorize,
+	detailed,
+	maxItems = null
+) {
+	if (!issues?.length) return [];
+
+	const output = [];
+	const colorMap = {
+		error: chalk.red.bold,
+		warning: chalk.yellow.bold,
+		suggestion: chalk.blue.bold
+	};
+
+	const titleColor = colorize ? colorMap[issueType] : (text) => text;
+	output.push(titleColor(sectionTitle));
+
+	const itemsToShow = maxItems ? issues.slice(0, maxItems) : issues;
+
+	itemsToShow.forEach((issue, index) => {
+		const formatted = formatSingleIssue(issue, issueType, colorize, detailed);
+		output.push(`  ${index + 1}. ${formatted}`);
+	});
+
+	if (maxItems && issues.length > maxItems) {
+		const remaining = issues.length - maxItems;
+		output.push(`  ... and ${remaining} more ${issueType}(s)`);
+	}
+
+	output.push(''); // Empty line
+	return output;
+}
+
+/**
  * Formats validation errors into user-friendly messages
  * @param {ValidationResult} result - Validation result to format
  * @param {object} options - Formatting options
@@ -43,51 +89,42 @@ export function formatValidationErrors(result, options = {}) {
 
 	output.push(''); // Empty line
 
-	// Format errors
+	// Format sections using helper function
 	if (result.errors?.length > 0) {
-		output.push(colorize ? chalk.red.bold('ERRORS:') : 'ERRORS:');
-		const errorsToShow = result.errors.slice(0, maxErrors);
-
-		errorsToShow.forEach((error, index) => {
-			const formatted = formatSingleIssue(error, 'error', colorize, detailed);
-			output.push(`  ${index + 1}. ${formatted}`);
-		});
-
-		if (result.errors.length > maxErrors) {
-			const remaining = result.errors.length - maxErrors;
-			output.push(`  ... and ${remaining} more error(s)`);
-		}
-		output.push(''); // Empty line
+		output.push(
+			...formatIssueSection(
+				result.errors,
+				'ERRORS:',
+				'error',
+				colorize,
+				detailed,
+				maxErrors
+			)
+		);
 	}
 
-	// Format warnings
 	if (includeWarnings && result.warnings?.length > 0) {
-		output.push(colorize ? chalk.yellow.bold('WARNINGS:') : 'WARNINGS:');
-		result.warnings.forEach((warning, index) => {
-			const formatted = formatSingleIssue(
-				warning,
+		output.push(
+			...formatIssueSection(
+				result.warnings,
+				'WARNINGS:',
 				'warning',
 				colorize,
 				detailed
-			);
-			output.push(`  ${index + 1}. ${formatted}`);
-		});
-		output.push(''); // Empty line
+			)
+		);
 	}
 
-	// Format suggestions
 	if (includeSuggestions && result.suggestions?.length > 0) {
-		output.push(colorize ? chalk.blue.bold('SUGGESTIONS:') : 'SUGGESTIONS:');
-		result.suggestions.forEach((suggestion, index) => {
-			const formatted = formatSingleIssue(
-				suggestion,
+		output.push(
+			...formatIssueSection(
+				result.suggestions,
+				'SUGGESTIONS:',
 				'suggestion',
 				colorize,
 				detailed
-			);
-			output.push(`  ${index + 1}. ${formatted}`);
-		});
-		output.push(''); // Empty line
+			)
+		);
 	}
 
 	// Add footer with guidance
