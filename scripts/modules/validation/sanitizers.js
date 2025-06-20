@@ -67,9 +67,9 @@ function sanitizeValue(value, depth, options) {
 		// Remove potentially dangerous characters and SQL injection patterns
 		sanitized = sanitized.replace(/[<>\"'&]/g, '');
 
-		// Remove SQL injection patterns
+		// Remove SQL injection patterns - more comprehensive
 		sanitized = sanitized.replace(
-			/(\bDROP\b|\bTABLE\b|\bUNION\b|\bSELECT\b|\bINSERT\b|\bDELETE\b|\bUPDATE\b)/gi,
+			/(\b(?:DROP|TABLE|UNION|SELECT|INSERT|DELETE|UPDATE|EXEC|EXECUTE|DECLARE|CAST|CONVERT|ALTER|CREATE|TRUNCATE|REPLACE|MERGE|CALL|EXPLAIN|GRANT|REVOKE|SHOW|DESCRIBE|USE|LOAD)\b)/gi,
 			''
 		);
 		sanitized = sanitized.replace(/(\b1\s*=\s*1\b|\b1\s*'\s*=\s*'1\b)/gi, '');
@@ -265,7 +265,7 @@ function normalizeGlobalConfig(config) {
 			global[field] = Number(global[field]);
 			if (!Number.isInteger(global[field]) || global[field] < 1) {
 				log('warn', `Invalid ${field}, using default`);
-				delete global[field];
+				global[field] = undefined;
 			}
 		}
 	}
@@ -394,7 +394,7 @@ function normalizeLinearConfig(config) {
 						'warn',
 						`Invalid Linear sync ${field}: ${sync[field]}, must be between ${min} and ${max}`
 					);
-					delete sync[field];
+					sync[field] = undefined;
 				}
 			}
 		}
@@ -649,13 +649,8 @@ export function secureDeleteCredentials(config) {
 				return value;
 			}
 
-			// Overwrite with random data (3 passes for security)
-			for (let i = 0; i < 3; i++) {
-				const randomData = Array.from({ length: value.length }, () =>
-					String.fromCharCode(Math.floor(Math.random() * 126) + 1)
-				).join('');
-				// This simulates secure overwriting in memory
-			}
+			// Note: JavaScript doesn't support secure memory overwriting
+			// The value will be garbage collected when no longer referenced
 
 			return null; // Mark for deletion
 		}

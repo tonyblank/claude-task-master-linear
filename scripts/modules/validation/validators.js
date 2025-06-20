@@ -227,10 +227,21 @@ function validateBusinessRules(config, options = {}) {
 
 			// Validate model parameters
 			if (roleConfig?.maxTokens) {
-				if (roleConfig.maxTokens < 1 || roleConfig.maxTokens > 200000) {
+				const providerLimits = {
+					openai: { min: 1, max: 128000 },
+					anthropic: { min: 1, max: 200000 },
+					google: { min: 1, max: 32000 },
+					default: { min: 1, max: 200000 }
+				};
+				const limits =
+					providerLimits[roleConfig.provider] || providerLimits.default;
+				if (
+					roleConfig.maxTokens < limits.min ||
+					roleConfig.maxTokens > limits.max
+				) {
 					result.addWarning(
 						`models.${role}.maxTokens`,
-						`Max tokens value ${roleConfig.maxTokens} may be outside typical range (1-200000)`,
+						`Max tokens value ${roleConfig.maxTokens} may be outside ${roleConfig.provider} range (${limits.min}-${limits.max})`,
 						'MAX_TOKENS_RANGE'
 					);
 				}

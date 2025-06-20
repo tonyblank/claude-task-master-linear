@@ -46,6 +46,9 @@ const {
 	deleteConfigValue
 } = await import('../../scripts/modules/config-helpers.js');
 
+// Performance tests are skipped by default to avoid slow CI runs
+// Run with: npm test -- --testNamePattern="Configuration Performance Tests"
+// Or enable by changing describe.skip to describe for local performance testing
 describe.skip('Configuration Performance Tests', () => {
 	// Helper function to generate large configuration objects
 	const generateLargeConfig = (depth = 5, breadth = 10) => {
