@@ -100,7 +100,7 @@
         "dependencies": [
           2
         ],
-        "status": "pending",
+        "status": "in-progress",
         "subtasks": [
           {
             "id": 1,
@@ -108,7 +108,7 @@
             "description": "Create a comprehensive design document for the event-driven architecture, including event types, flow diagrams, and component interactions.",
             "dependencies": [],
             "details": "Define all possible event types (task creation, updates, deletions, etc.), create flow diagrams showing how events propagate through the system, document component responsibilities, and establish patterns for event consumption. Include considerations for async vs sync processing and scalability.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 2,
@@ -1792,7 +1792,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-19T14:41:30.517Z",
+      "updated": "2025-06-20T16:02:08.422Z",
       "description": "Tasks for master context"
     }
   }
