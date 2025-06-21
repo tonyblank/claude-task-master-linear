@@ -5,6 +5,11 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import logger from './logger.js';
 import { registerTaskMasterTools } from './tools/index.js';
+import {
+	initializeEventSystem,
+	registerIntegration
+} from '../../scripts/modules/events/index.js';
+import { LinearIntegrationHandler } from '../../scripts/modules/integrations/linear-integration-handler.js';
 
 // Load environment variables
 dotenv.config();
@@ -49,10 +54,44 @@ class TaskMasterMCPServer {
 	async init() {
 		if (this.initialized) return;
 
-		// Pass the manager instance to the tool registration function
-		registerTaskMasterTools(this.server, this.asyncManager);
+		try {
+			// Initialize the event system for integrations
+			this.logger.info('Initializing TaskMaster event system...');
+			await initializeEventSystem({
+				enableErrorBoundaries: true,
+				enableCircuitBreakers: true,
+				enableHealthMonitoring: true,
+				enableAutoRecovery: true
+			});
+			this.logger.info('Event system initialized successfully');
 
-		this.initialized = true;
+			// Register Linear integration if API key is available
+			const linearApiKey = process.env.LINEAR_API_KEY;
+			if (linearApiKey) {
+				this.logger.info('Registering Linear integration...');
+				const linearIntegration = new LinearIntegrationHandler({
+					apiKey: linearApiKey,
+					teamId: process.env.LINEAR_TEAM_ID,
+					defaultProjectId: process.env.LINEAR_PROJECT_ID,
+					createIssues: process.env.LINEAR_CREATE_ISSUES !== 'false'
+				});
+
+				registerIntegration(linearIntegration);
+				this.logger.info('Linear integration registered successfully');
+			} else {
+				this.logger.info(
+					'Linear API key not found - Linear integration disabled'
+				);
+			}
+
+			// Pass the manager instance to the tool registration function
+			registerTaskMasterTools(this.server, this.asyncManager);
+
+			this.initialized = true;
+		} catch (error) {
+			this.logger.error('Failed to initialize MCP server:', error.message);
+			throw error;
+		}
 
 		return this;
 	}

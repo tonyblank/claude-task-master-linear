@@ -126,7 +126,7 @@ export async function addTaskDirect(args, log, context = {}) {
 				'json', // outputFormat
 				manualTaskData, // Pass the manual task data
 				false, // research flag is false for manual creation
-				projectRoot // Pass projectRoot
+				null // tag is null - will use current tag from context
 			);
 			newTaskId = result.newTaskId;
 			telemetryData = result.telemetryData;
@@ -152,7 +152,8 @@ export async function addTaskDirect(args, log, context = {}) {
 				},
 				'json', // outputFormat
 				null, // manualTaskData is null for AI creation
-				research // Pass the research flag
+				research, // Pass the research flag
+				null // tag is null - will use current tag from context
 			);
 			newTaskId = result.newTaskId;
 			telemetryData = result.telemetryData;

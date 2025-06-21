@@ -161,7 +161,7 @@
               5
             ],
             "details": "Modify the addTask command to emit appropriate events, create sample integrations that respond to these events, and demonstrate the full event flow. Document the implementation as a reference for other commands.",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 7,
@@ -381,7 +381,7 @@
             "description": "Implement API calls to fetch workflow states from Linear, including pagination handling and error management",
             "dependencies": [],
             "details": "Create a service method to query Linear's GraphQL API for workflow states. Handle authentication, pagination for large result sets, and API rate limiting. Return structured data with state IDs, names, and types.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 2,
@@ -391,7 +391,7 @@
               1
             ],
             "details": "Develop a matching algorithm that handles variations in naming conventions (e.g., 'In Progress' vs 'in-progress' vs 'InProgress'). Include similarity scoring, case-insensitive matching, and common abbreviation handling.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 3,
@@ -402,7 +402,7 @@
               2
             ],
             "details": "Build an in-memory cache with TTL support to store state ID mappings. Include cache invalidation strategies and persistence options for frequently used mappings.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 4,
@@ -413,7 +413,7 @@
               3
             ],
             "details": "Implement a configuration file or database schema for custom mappings. Support regex patterns, exact matches, and priority ordering. Include validation and conflict resolution.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 5,
@@ -424,7 +424,7 @@
               4
             ],
             "details": "Add logic to handle missing states, circular dependencies, archived workflows, and team-specific configurations. Implement sensible defaults and user notifications for unmapped states.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 6,
@@ -438,7 +438,7 @@
               5
             ],
             "details": "Write unit tests for matching logic, integration tests for API queries, and end-to-end tests for complete workflow mapping scenarios. Include performance tests for caching and mock various Linear workflow configurations.",
-            "status": "pending"
+            "status": "done"
           }
         ]
       },
@@ -1788,11 +1788,41 @@
         ],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 27,
+        "title": "Implement Debug Mode for Linear Sync Operations",
+        "description": "Create a debug mode that provides detailed logging and diagnostic information for all Linear sync operations to help troubleshoot integration issues.",
+        "details": "Implement a debug flag (--debug or -d) for all Linear sync commands that enables verbose logging. Create a dedicated DebugLogger class that extends the existing logging system with methods for different verbosity levels (info, debug, trace). Log all API requests and responses with sensitive data redacted. Include timing information for performance analysis. Log state changes in the sync process with before/after snapshots. Implement colorized console output for different message types (errors in red, warnings in yellow, etc.). Create a log file option that saves all debug output to a timestamped file. Add context information to each log entry (command, operation type, task ID). Include system information in debug logs (Node version, OS, package versions). Implement a --trace flag for even more detailed logging including stack traces. Add option to export debug logs in JSON format for automated analysis. Ensure debug mode doesn't interfere with normal operation but provides maximum visibility into the sync process.",
+        "testStrategy": "Test debug mode with various sync operations (create, update, status change). Verify all API calls are properly logged with sensitive data redacted. Test performance impact of debug mode to ensure it doesn't significantly slow operations. Verify log files are created correctly with proper permissions. Test with both successful operations and error scenarios to ensure comprehensive logging. Validate JSON export format for machine readability. Test in different environments (Windows, Mac, Linux) to ensure consistent logging behavior. Have team members review debug output to confirm it provides useful troubleshooting information.",
+        "status": "pending",
+        "dependencies": [
+          3,
+          16,
+          20
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 28,
+        "title": "Create Debug Test Suite for Linear Integration",
+        "description": "Develop a comprehensive test suite specifically for debugging Linear integration issues, with test cases that simulate common failure scenarios and edge cases.",
+        "details": "Implement a dedicated debug test suite that complements the main testing infrastructure but focuses specifically on troubleshooting scenarios:\n\n1. Create a `LinearDebugTests` class with specialized test cases for common integration failure points:\n   - Authentication failures (invalid/expired API tokens)\n   - Network connectivity issues (timeouts, connection drops)\n   - Rate limiting scenarios\n   - Malformed API responses\n   - Concurrent operation conflicts\n   - Data synchronization edge cases\n\n2. Implement mock Linear API responses for each failure scenario:\n   - Create a `MockLinearErrorResponses` utility that returns realistic error payloads\n   - Include HTTP status codes (401, 403, 429, 500, etc.) with appropriate error messages\n   - Simulate partial success scenarios (some operations succeed, others fail)\n\n3. Create test fixtures that represent complex task hierarchies and sync states:\n   - Tasks with deep subtask nesting\n   - Tasks with conflicting status between local and remote\n   - Orphaned tasks (exist locally but not in Linear)\n   - Ghost tasks (exist in Linear but not locally)\n\n4. Implement timing and performance tests:\n   - Measure API call latency under different conditions\n   - Test bulk operations with varying payload sizes\n   - Simulate slow network conditions\n\n5. Add specific tests for the debug mode functionality:\n   - Verify debug logs contain expected diagnostic information\n   - Test log redaction of sensitive information\n   - Validate log file rotation and management\n\n6. Create a test harness that can be run in CI/CD but also manually invoked:\n   - Command: `npm run test:linear-debug`\n   - Allow targeting specific test scenarios via command line arguments\n   - Support running in verbose mode with full logging\n\n7. Document each test case with:\n   - Expected behavior\n   - Common failure patterns\n   - Troubleshooting steps for developers\n\n8. Implement a test report generator that creates detailed HTML reports of test runs with:\n   - API call sequences\n   - Request/response payloads (with sensitive data redacted)\n   - Timing information\n   - State changes",
+        "testStrategy": "1. Run the full debug test suite in isolation:\n   - Verify all test cases execute without errors\n   - Confirm test coverage of all identified failure scenarios\n   - Validate that tests properly clean up after themselves\n\n2. Test the debug mode integration:\n   - Run tests with debug flag enabled and verify enhanced logging\n   - Confirm sensitive data is properly redacted in logs\n   - Validate log file creation and content\n\n3. Verify error simulation accuracy:\n   - Compare simulated error responses with actual Linear API errors\n   - Adjust mock responses to match current Linear API behavior\n   - Test error handling code paths are properly exercised\n\n4. Conduct performance validation:\n   - Measure baseline performance metrics\n   - Test with artificially degraded conditions\n   - Verify timeout and retry mechanisms function correctly\n\n5. Validate test reporting:\n   - Generate test reports and verify content accuracy\n   - Check for proper formatting and readability\n   - Ensure diagnostic information is comprehensive\n\n6. Perform integration with main test suite:\n   - Run debug tests as part of the full test pipeline\n   - Verify no conflicts with other test modules\n   - Confirm CI/CD integration works correctly\n\n7. Manual verification:\n   - Have team members run debug tests on different environments\n   - Collect feedback on test coverage and usefulness\n   - Identify any missing failure scenarios",
+        "status": "pending",
+        "dependencies": [
+          20,
+          27,
+          16
+        ],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-21T16:01:22.751Z",
+      "updated": "2025-06-21T16:53:11.426Z",
       "description": "Tasks for master context"
     }
   }

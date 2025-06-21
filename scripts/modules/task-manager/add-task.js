@@ -29,6 +29,11 @@ import { generateObjectService } from '../ai-services-unified.js';
 import { getDefaultPriority } from '../config-manager.js';
 import generateTaskFiles from './generate-task-files.js';
 import ContextGatherer from '../utils/contextGatherer.js';
+import {
+	emitEvent,
+	EVENT_TYPES,
+	createOperationContext
+} from '../events/index.js';
 
 // Define Zod schema for the expected AI output object
 const AiTaskDataSchema = z.object({
@@ -556,6 +561,37 @@ async function addTask(
 		// The writeJSON function will automatically filter out _rawTaggedData
 		writeJSON(tasksPath, rawData);
 		report('DEBUG: tasks.json written.', 'debug');
+
+		// Emit task creation event through integration system
+		try {
+			const operationContext = createOperationContext(
+				projectRoot,
+				session,
+				isMCP ? 'mcp' : 'cli',
+				{
+					commandName: commandName || 'add-task',
+					outputType: outputType || (isMCP ? 'mcp' : 'cli')
+				}
+			);
+
+			await emitEvent(
+				EVENT_TYPES.TASK_CREATED,
+				{
+					taskId: newTaskId.toString(),
+					task: newTask,
+					tag: targetTag
+				},
+				operationContext
+			);
+
+			report('DEBUG: Task creation event emitted successfully.', 'debug');
+		} catch (eventError) {
+			// Don't fail the task creation if event emission fails
+			report(
+				`DEBUG: Failed to emit task creation event: ${eventError.message}`,
+				'warn'
+			);
+		}
 
 		// Generate markdown task files
 		// report('Generating task files...', 'info');

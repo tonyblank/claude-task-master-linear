@@ -1,0 +1,33 @@
+{
+	"master": {
+		"tasks": [
+			{
+				"id": 1,
+				"title": "Manual Test Task",
+				"description": "Manually created task for testing",
+				"details": "Manual implementation details",
+				"testStrategy": "Manual testing strategy",
+				"status": "pending",
+				"dependencies": [],
+				"priority": "low",
+				"subtasks": []
+			},
+			{
+				"id": 2,
+				"title": "Manual Test Task",
+				"description": "Manually created task for testing",
+				"details": "Manual implementation details",
+				"testStrategy": "Manual testing strategy",
+				"status": "pending",
+				"dependencies": [],
+				"priority": "low",
+				"subtasks": []
+			}
+		],
+		"metadata": {
+			"created": "2025-06-21T16:36:07.772Z",
+			"description": "Default tasks context",
+			"updated": "2025-06-21T16:37:43.362Z"
+		}
+	}
+}
