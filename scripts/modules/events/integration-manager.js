@@ -13,6 +13,10 @@ import {
 	createEventPayload
 } from './types.js';
 import { BaseIntegrationHandler } from './base-integration-handler.js';
+import { errorBoundaryRegistry } from './error-boundary.js';
+import { circuitBreakerRegistry } from './circuit-breaker.js';
+import { healthMonitor } from './health-monitor.js';
+import { recoveryManager } from './recovery-manager.js';
 
 /**
  * Main integration manager that handles event emission and handler coordination
@@ -24,6 +28,11 @@ export class IntegrationManager {
 	constructor(config = {}) {
 		this.config = {
 			...DEFAULT_CONFIG.eventProcessing,
+			enableErrorBoundaries: true,
+			enableCircuitBreakers: true,
+			enableHealthMonitoring: true,
+			enableAutoRecovery: true,
+			isolationLevel: 'integration',
 			...config
 		};
 
@@ -46,12 +55,17 @@ export class IntegrationManager {
 			eventsProcessed: 0,
 			eventsFailed: 0,
 			handlersExecuted: 0,
-			handlersFailed: 0
+			handlersFailed: 0,
+			isolatedEvents: 0,
+			recoveredEvents: 0
 		};
 
 		// Event queue for batching
 		this.eventQueue = [];
 		this.batchTimer = null;
+
+		// Error boundaries for integrations
+		this.errorBoundaries = new Map();
 
 		// Bind methods to preserve context
 		this.emit = this.emit.bind(this);
@@ -74,10 +88,24 @@ export class IntegrationManager {
 		this.config = { ...this.config, ...config };
 
 		try {
-			// Initialize all registered integrations
+			// Initialize error boundaries and monitoring systems
+			if (this.config.enableHealthMonitoring) {
+				this._initializeHealthMonitoring();
+			}
+
+			if (this.config.enableAutoRecovery) {
+				this._initializeRecoveryManager();
+			}
+
+			// Initialize all registered integrations with error boundaries
 			const initPromises = Array.from(this.integrations.values()).map(
 				async (integration) => {
 					try {
+						// Create error boundary for this integration
+						if (this.config.enableErrorBoundaries) {
+							await this._setupIntegrationErrorBoundary(integration);
+						}
+
 						await integration.initialize(this.config);
 						log('info', `Integration ${integration.getName()} initialized`);
 					} catch (error) {
@@ -86,7 +114,13 @@ export class IntegrationManager {
 							`Failed to initialize integration ${integration.getName()}:`,
 							error.message
 						);
-						// Don't fail entire initialization for one integration
+						// Handle initialization failure through error boundary
+						if (this.config.enableErrorBoundaries) {
+							const boundary = this.errorBoundaries.get(integration.getName());
+							if (boundary) {
+								boundary.handleError(error, { phase: 'initialization' });
+							}
+						}
 					}
 				}
 			);
@@ -341,16 +375,46 @@ export class IntegrationManager {
 
 			log('debug', `Emitting event: ${eventType}`);
 
-			// Handle batching for bulk operations
-			if (this.config.enableBatching && this._shouldBatch(eventType)) {
-				this._addToBatch(eventPayload);
+			// Use error boundary for event processing if enabled
+			if (this.config.enableErrorBoundaries) {
+				const boundary = this._getEventErrorBoundary(eventType);
+
+				await boundary.execute(
+					async () => {
+						// Handle batching for bulk operations
+						if (this.config.enableBatching && this._shouldBatch(eventType)) {
+							this._addToBatch(eventPayload);
+						} else {
+							// Process immediately
+							await this._processEvent(eventPayload);
+						}
+					},
+					[],
+					{
+						context: { eventType, eventId: eventPayload.id },
+						fallback: this._createEventFallback(eventType, eventPayload),
+						timeout: this.config.eventTimeout || 30000
+					}
+				);
 			} else {
-				// Process immediately
-				await this._processEvent(eventPayload);
+				// Handle batching for bulk operations
+				if (this.config.enableBatching && this._shouldBatch(eventType)) {
+					this._addToBatch(eventPayload);
+				} else {
+					// Process immediately
+					await this._processEvent(eventPayload);
+				}
 			}
 		} catch (error) {
 			this.stats.eventsFailed++;
 			log('error', `Failed to emit event ${eventType}:`, error.message);
+
+			// Handle error through error boundary if available
+			if (this.config.enableErrorBoundaries) {
+				const boundary = this._getEventErrorBoundary(eventType);
+				boundary.handleError(error, { eventType, phase: 'emission' });
+			}
+
 			throw error;
 		}
 	}
@@ -693,5 +757,261 @@ export class IntegrationManager {
 			this._processEvent(eventPayload)
 		);
 		await Promise.allSettled(promises);
+	}
+
+	/**
+	 * Initialize health monitoring system
+	 *
+	 * @private
+	 */
+	_initializeHealthMonitoring() {
+		// Register health checks for integration manager
+		healthMonitor.registerCheck(
+			'integration_manager',
+			() => {
+				const stats = this.getStats();
+				const errorRate =
+					stats.eventsProcessed > 0
+						? stats.eventsFailed / stats.eventsProcessed
+						: 0;
+
+				if (errorRate > 0.5) {
+					return {
+						status: 'unhealthy',
+						message: `High error rate: ${Math.round(errorRate * 100)}%`,
+						data: stats
+					};
+				} else if (errorRate > 0.2) {
+					return {
+						status: 'degraded',
+						message: `Elevated error rate: ${Math.round(errorRate * 100)}%`,
+						data: stats
+					};
+				}
+
+				return {
+					status: 'healthy',
+					message: `Error rate: ${Math.round(errorRate * 100)}%`,
+					data: stats
+				};
+			},
+			{
+				type: 'integration',
+				critical: true,
+				description: 'Integration Manager health check'
+			}
+		);
+
+		// Start health monitoring
+		healthMonitor.start();
+		log('debug', 'Health monitoring initialized');
+	}
+
+	/**
+	 * Initialize recovery manager
+	 *
+	 * @private
+	 */
+	_initializeRecoveryManager() {
+		// Register recovery strategies for integration manager
+		recoveryManager.registerStrategy('integration_manager_reset', async () => {
+			// Reset integration manager state
+			this.stats.eventsFailed = 0;
+			this.stats.handlersFailed = 0;
+
+			// Reset all error boundaries
+			for (const boundary of this.errorBoundaries.values()) {
+				boundary.reset();
+			}
+
+			return { action: 'integration_manager_reset', timestamp: Date.now() };
+		});
+
+		// Start recovery manager
+		recoveryManager.start();
+		log('debug', 'Recovery manager initialized');
+	}
+
+	/**
+	 * Setup error boundary for an integration
+	 *
+	 * @param {BaseIntegrationHandler} integration - Integration instance
+	 * @private
+	 */
+	async _setupIntegrationErrorBoundary(integration) {
+		const integrationName = integration.getName();
+
+		// Create error boundary with integration-specific config
+		const boundary = errorBoundaryRegistry.getBoundary(integrationName, {
+			maxConcurrentErrors: this.config.maxConcurrentErrors || 10,
+			errorWindowMs: this.config.errorWindowMs || 60000,
+			maxRetries: this.config.maxRetries || 3,
+			retryDelay: this.config.retryDelay || 1000,
+			timeoutMs: this.config.handlerTimeout || 30000,
+			enableCircuitBreaker: this.config.enableCircuitBreakers,
+			enableFallback: this.config.enableFallback || true,
+			isolationLevel: this.config.isolationLevel
+		});
+
+		// Set up event listeners for boundary events
+		boundary.on('error:caught', (data) => {
+			log(
+				'warn',
+				`Error boundary caught error in ${integrationName}:`,
+				data.error.message
+			);
+			this.stats.handlersFailed++;
+		});
+
+		boundary.on('isolation:started', (data) => {
+			log(
+				'error',
+				`Integration ${integrationName} isolated due to: ${data.reason}`
+			);
+			this.stats.isolatedEvents++;
+		});
+
+		boundary.on('isolation:ended', (data) => {
+			log(
+				'info',
+				`Integration ${integrationName} recovered from isolation: ${data.reason}`
+			);
+			this.stats.recoveredEvents++;
+		});
+
+		this.errorBoundaries.set(integrationName, boundary);
+
+		// Register circuit breaker health check
+		if (this.config.enableCircuitBreakers) {
+			healthMonitor.registerCheck(
+				`circuit_breaker_${integrationName}`,
+				() => {
+					const breaker = circuitBreakerRegistry.getBreaker(integrationName);
+					const status = breaker.getStatus();
+
+					if (status.state === 'open') {
+						return {
+							status: 'unhealthy',
+							message: `Circuit breaker OPEN for ${integrationName}`,
+							data: status
+						};
+					} else if (status.state === 'half_open') {
+						return {
+							status: 'degraded',
+							message: `Circuit breaker HALF_OPEN for ${integrationName}`,
+							data: status
+						};
+					}
+
+					return {
+						status: 'healthy',
+						message: `Circuit breaker CLOSED for ${integrationName}`,
+						data: status
+					};
+				},
+				{
+					type: 'circuit_breaker',
+					critical: false,
+					description: `Circuit breaker for ${integrationName}`
+				}
+			);
+		}
+
+		log(
+			'debug',
+			`Error boundary setup completed for integration: ${integrationName}`
+		);
+	}
+
+	/**
+	 * Get error boundary for event processing
+	 *
+	 * @param {string} eventType - Event type
+	 * @returns {ErrorBoundary} Error boundary instance
+	 * @private
+	 */
+	_getEventErrorBoundary(eventType) {
+		// Use a general event processing boundary
+		const boundaryName = `event_processing_${eventType.split(':')[0]}`;
+
+		return errorBoundaryRegistry.getBoundary(boundaryName, {
+			maxConcurrentErrors: this.config.maxConcurrentErrors || 10,
+			errorWindowMs: this.config.errorWindowMs || 60000,
+			maxRetries: this.config.maxRetries || 2,
+			retryDelay: this.config.retryDelay || 1000,
+			timeoutMs: this.config.eventTimeout || 30000,
+			enableFallback: true,
+			isolationLevel: 'operation'
+		});
+	}
+
+	/**
+	 * Create fallback function for event processing
+	 *
+	 * @param {string} eventType - Event type
+	 * @param {Object} eventPayload - Event payload
+	 * @returns {Function} Fallback function
+	 * @private
+	 */
+	_createEventFallback(eventType, eventPayload) {
+		return async () => {
+			this.stats.isolatedEvents++;
+			log(
+				'warn',
+				`Event ${eventType} handled by fallback due to error boundary isolation`
+			);
+
+			// Queue for later retry if enabled
+			if (this.config.enableEventRetry) {
+				await this._queueForRetry(eventPayload);
+			}
+
+			return { fallback: true, eventType, timestamp: Date.now() };
+		};
+	}
+
+	/**
+	 * Queue event for later retry
+	 *
+	 * @param {Object} eventPayload - Event payload
+	 * @private
+	 */
+	async _queueForRetry(eventPayload) {
+		// Simple retry queue implementation
+		// In a production system, this might use a persistent queue
+		setTimeout(async () => {
+			try {
+				log('debug', `Retrying event: ${eventPayload.eventType}`);
+				await this._processEvent(eventPayload);
+			} catch (error) {
+				log(
+					'error',
+					`Event retry failed for ${eventPayload.eventType}:`,
+					error.message
+				);
+			}
+		}, this.config.retryDelay || 5000);
+	}
+
+	/**
+	 * Get system health status including error boundaries
+	 *
+	 * @returns {Object} System health status
+	 */
+	getSystemHealth() {
+		const systemHealth = healthMonitor.getSystemHealth();
+		const boundaryStatuses = errorBoundaryRegistry.getAllStatuses();
+		const circuitBreakerStatuses = circuitBreakerRegistry.getAllStatuses();
+
+		return {
+			...systemHealth,
+			integrationManager: {
+				stats: this.getStats(),
+				initialized: this.initialized,
+				shuttingDown: this.isShuttingDown
+			},
+			errorBoundaries: boundaryStatuses,
+			circuitBreakers: circuitBreakerStatuses
+		};
 	}
 }

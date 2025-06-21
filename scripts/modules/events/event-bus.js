@@ -205,7 +205,7 @@ export class EventBus {
 			return this._executeSubscriber(subscription, messageObj, context);
 		};
 
-		const listenerId = this.emitter.on(fullEventType, wrappedSubscriber, {
+		const emitterOptions = {
 			priority: subscriptionOptions.priority,
 			filter: subscriptionOptions.filter
 				? (messageObj) =>
@@ -213,7 +213,18 @@ export class EventBus {
 				: null,
 			once: subscriptionOptions.once,
 			guaranteed: subscriptionOptions.guaranteed
-		});
+		};
+
+		// Only pass retries if it's explicitly set
+		if (subscriptionOptions.retries !== undefined) {
+			emitterOptions.retries = subscriptionOptions.retries;
+		}
+
+		const listenerId = this.emitter.on(
+			fullEventType,
+			wrappedSubscriber,
+			emitterOptions
+		);
 
 		subscription.listenerId = listenerId;
 

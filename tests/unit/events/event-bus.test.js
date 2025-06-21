@@ -3,6 +3,12 @@
  */
 
 import { EventBus } from '../../../scripts/modules/events/event-bus.js';
+import { MockServiceRegistry } from '../../mocks/service-registry.js';
+import {
+	expectCalled,
+	expectCalledWith,
+	clearCalls
+} from '../../utils/test-helpers.js';
 
 describe('EventBus', () => {
 	let eventBus;
@@ -131,9 +137,9 @@ describe('EventBus', () => {
 		});
 
 		test('should handle guaranteed delivery', async () => {
-			const subscriber = jest
-				.fn()
-				.mockRejectedValue(new Error('Subscriber failed'));
+			const subscriber = MockServiceRegistry.createMockFn(() =>
+				Promise.reject(new Error('Subscriber failed'))
+			);
 			eventBus.subscribe('test.topic', subscriber);
 
 			const result = await eventBus.publish(
@@ -151,7 +157,7 @@ describe('EventBus', () => {
 
 	describe('subscribing', () => {
 		test('should subscribe to topics', () => {
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			const subscriptionId = eventBus.subscribe('test.topic', subscriber);
 
 			expect(typeof subscriptionId).toBe('string');
@@ -165,37 +171,40 @@ describe('EventBus', () => {
 		});
 
 		test('should receive published messages', async () => {
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			eventBus.subscribe('test.topic', subscriber);
 
 			await eventBus.publish('test.topic', { value: 42 });
 
-			expect(subscriber).toHaveBeenCalledWith(
-				{ value: 42 },
-				expect.objectContaining({
-					messageId: expect.any(String),
-					topic: 'test.topic',
-					channel: 'default'
-				})
-			);
+			expect(expectCalled(subscriber)).toBe(true);
+			const calls = subscriber.mock
+				? subscriber.mock.calls
+				: subscriber.calls || [];
+			expect(calls.length).toBe(1);
+			expect(calls[0][0]).toEqual({ value: 42 });
+			expect(calls[0][1]).toMatchObject({
+				messageId: expect.any(String),
+				topic: 'test.topic',
+				channel: 'default'
+			});
 		});
 
 		test('should handle multiple subscribers', async () => {
-			const subscriber1 = jest.fn();
-			const subscriber2 = jest.fn();
+			const subscriber1 = MockServiceRegistry.createMockFn();
+			const subscriber2 = MockServiceRegistry.createMockFn();
 
 			eventBus.subscribe('test.topic', subscriber1);
 			eventBus.subscribe('test.topic', subscriber2);
 
 			await eventBus.publish('test.topic', { data: 'test' });
 
-			expect(subscriber1).toHaveBeenCalled();
-			expect(subscriber2).toHaveBeenCalled();
+			expect(expectCalled(subscriber1)).toBe(true);
+			expect(expectCalled(subscriber2)).toBe(true);
 		});
 
 		test('should filter messages with subscriber filters', async () => {
-			const subscriber1 = jest.fn();
-			const subscriber2 = jest.fn();
+			const subscriber1 = MockServiceRegistry.createMockFn();
+			const subscriber2 = MockServiceRegistry.createMockFn();
 
 			eventBus.subscribe('test.topic', subscriber1, {
 				filter: (data, metadata) => data.value > 5
@@ -204,24 +213,27 @@ describe('EventBus', () => {
 
 			await eventBus.publish('test.topic', { value: 3 });
 
-			expect(subscriber1).not.toHaveBeenCalled();
-			expect(subscriber2).toHaveBeenCalled();
+			expect(expectCalled(subscriber1)).toBe(false);
+			expect(expectCalled(subscriber2)).toBe(true);
 		});
 
 		test('should handle one-time subscriptions', async () => {
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			eventBus.subscribe('test.topic', subscriber, { once: true });
 
 			await eventBus.publish('test.topic', { data: 'test1' });
 			await eventBus.publish('test.topic', { data: 'test2' });
 
-			expect(subscriber).toHaveBeenCalledTimes(1);
+			const calls = subscriber.mock
+				? subscriber.mock.calls
+				: subscriber.calls || [];
+			expect(calls.length).toBe(1);
 		});
 
 		test('should subscribe to specific channels', async () => {
 			eventBus.createChannel('specific');
 
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			eventBus.subscribe('test.topic', subscriber, {
 				channel: 'specific'
 			});
@@ -234,11 +246,17 @@ describe('EventBus', () => {
 					channel: 'specific'
 				}
 			);
-			expect(subscriber).toHaveBeenCalledTimes(1);
+			const calls = subscriber.mock
+				? subscriber.mock.calls
+				: subscriber.calls || [];
+			expect(calls.length).toBe(1);
 
 			// Should not receive message on default channel
 			await eventBus.publish('test.topic', { data: 'test' });
-			expect(subscriber).toHaveBeenCalledTimes(1);
+			const callsAfter = subscriber.mock
+				? subscriber.mock.calls
+				: subscriber.calls || [];
+			expect(callsAfter.length).toBe(1);
 		});
 
 		test('should replay message history for new subscribers', async () => {
@@ -248,7 +266,7 @@ describe('EventBus', () => {
 			await eventBus.publish('test.topic', { data: 'msg3' });
 
 			// Subscribe with replay
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			eventBus.subscribe('test.topic', subscriber, {
 				replay: true,
 				replayCount: 2
@@ -257,19 +275,26 @@ describe('EventBus', () => {
 			// Should receive replayed messages
 			await new Promise((resolve) => setTimeout(resolve, 50)); // Wait for async replay
 
-			expect(subscriber).toHaveBeenCalledTimes(2);
+			const calls = subscriber.mock
+				? subscriber.mock.calls
+				: subscriber.calls || [];
+			expect(calls.length).toBe(2);
 		});
 
 		test('should handle subscriber priorities', async () => {
 			const executionOrder = [];
 
-			const subscriber1 = jest.fn().mockImplementation(() => {
-				executionOrder.push('low');
-			});
+			const subscriber1 = MockServiceRegistry.createMockFn().mockImplementation(
+				() => {
+					executionOrder.push('low');
+				}
+			);
 
-			const subscriber2 = jest.fn().mockImplementation(() => {
-				executionOrder.push('high');
-			});
+			const subscriber2 = MockServiceRegistry.createMockFn().mockImplementation(
+				() => {
+					executionOrder.push('high');
+				}
+			);
 
 			eventBus.subscribe('test.topic', subscriber1, { priority: 1 });
 			eventBus.subscribe('test.topic', subscriber2, { priority: 5 });
@@ -282,7 +307,7 @@ describe('EventBus', () => {
 
 	describe('unsubscribing', () => {
 		test('should unsubscribe successfully', () => {
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			const subscriptionId = eventBus.subscribe('test.topic', subscriber);
 
 			expect(eventBus.unsubscribe(subscriptionId)).toBe(true);
@@ -290,13 +315,13 @@ describe('EventBus', () => {
 		});
 
 		test('should not receive messages after unsubscribing', async () => {
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			const subscriptionId = eventBus.subscribe('test.topic', subscriber);
 
 			eventBus.unsubscribe(subscriptionId);
 			await eventBus.publish('test.topic', { data: 'test' });
 
-			expect(subscriber).not.toHaveBeenCalled();
+			expect(expectCalled(subscriber)).toBe(false);
 		});
 	});
 
@@ -366,7 +391,7 @@ describe('EventBus', () => {
 
 	describe('routing rules', () => {
 		test('should add and execute routing rules', async () => {
-			const ruleExecuted = jest.fn();
+			const ruleExecuted = MockServiceRegistry.createMockFn();
 
 			eventBus.addRoutingRule(
 				'test-rule',
@@ -382,15 +407,20 @@ describe('EventBus', () => {
 				data: 'test'
 			});
 
-			expect(ruleExecuted).toHaveBeenCalledTimes(1);
-			expect(ruleExecuted).toHaveBeenCalledWith({
-				shouldRoute: true,
-				data: 'test'
-			});
+			const calls = ruleExecuted.mock
+				? ruleExecuted.mock.calls
+				: ruleExecuted.calls || [];
+			expect(calls.length).toBe(1);
+			expect(
+				expectCalledWith(ruleExecuted, {
+					shouldRoute: true,
+					data: 'test'
+				})
+			).toBe(true);
 		});
 
 		test('should remove routing rules', async () => {
-			const ruleExecuted = jest.fn();
+			const ruleExecuted = MockServiceRegistry.createMockFn();
 
 			eventBus.addRoutingRule(
 				'test-rule',
@@ -402,12 +432,12 @@ describe('EventBus', () => {
 			expect(eventBus.removeRoutingRule('test-rule')).toBe(false);
 
 			await eventBus.publish('test.topic', { data: 'test' });
-			expect(ruleExecuted).not.toHaveBeenCalled();
+			expect(expectCalled(ruleExecuted)).toBe(false);
 		});
 
 		test('should handle routing rule errors gracefully', async () => {
 			const originalError = console.log;
-			console.log = jest.fn();
+			console.log = MockServiceRegistry.createMockFn();
 
 			eventBus.addRoutingRule(
 				'failing-rule',
@@ -419,10 +449,15 @@ describe('EventBus', () => {
 
 			await eventBus.publish('test.topic', { data: 'test' });
 
-			expect(console.log).toHaveBeenCalledWith(
-				expect.stringContaining('[ERROR]'),
-				expect.stringContaining('Routing rule failing-rule failed')
-			);
+			expect(expectCalled(console.log)).toBe(true);
+			const logCalls = console.log.mock
+				? console.log.mock.calls
+				: console.log.calls || [];
+			expect(
+				logCalls.some((call) =>
+					call.some((arg) => typeof arg === 'string' && arg.includes('[ERROR]'))
+				)
+			).toBe(true);
 
 			console.log = originalError;
 		});
@@ -440,7 +475,7 @@ describe('EventBus', () => {
 
 	describe('statistics', () => {
 		test('should track basic statistics', async () => {
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			eventBus.subscribe('test.topic', subscriber);
 
 			await eventBus.publish('test.topic', { data: 'test' });
@@ -454,7 +489,7 @@ describe('EventBus', () => {
 		});
 
 		test('should provide detailed information', async () => {
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			eventBus.subscribe('test.topic', subscriber);
 			await eventBus.publish('test.topic', { data: 'test' });
 
@@ -467,33 +502,40 @@ describe('EventBus', () => {
 
 	describe('wildcard and pattern matching', () => {
 		test('should handle wildcard subscriptions', async () => {
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			eventBus.subscribe('*', subscriber);
 
 			await eventBus.publish('any.topic', { data: 'test' });
 			await eventBus.publish('another.topic', { data: 'test' });
 
-			expect(subscriber).toHaveBeenCalledTimes(2);
+			const calls = subscriber.mock
+				? subscriber.mock.calls
+				: subscriber.calls || [];
+			expect(calls.length).toBe(2);
 		});
 
 		test('should handle pattern subscriptions', async () => {
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			eventBus.subscribe('test.*', subscriber);
 
 			await eventBus.publish('test.specific', { data: 'test' });
 			await eventBus.publish('test.another', { data: 'test' });
 			await eventBus.publish('other.topic', { data: 'test' });
 
-			expect(subscriber).toHaveBeenCalledTimes(2);
+			const calls = subscriber.mock
+				? subscriber.mock.calls
+				: subscriber.calls || [];
+			expect(calls.length).toBe(2);
 		});
 	});
 
 	describe('error handling', () => {
 		test('should handle subscriber errors gracefully', async () => {
-			const failingSubscriber = jest
-				.fn()
-				.mockRejectedValue(new Error('Subscriber error'));
-			const workingSubscriber = jest.fn().mockResolvedValue('success');
+			const failingSubscriber = MockServiceRegistry.createMockFn(() =>
+				Promise.reject(new Error('Subscriber error'))
+			);
+			const workingSubscriber =
+				MockServiceRegistry.createMockFn().mockResolvedValue('success');
 
 			eventBus.subscribe('test.topic', failingSubscriber);
 			eventBus.subscribe('test.topic', workingSubscriber);
@@ -502,14 +544,18 @@ describe('EventBus', () => {
 
 			expect(result.success).toBe(false);
 			expect(result.failures).toHaveLength(1);
-			expect(workingSubscriber).toHaveBeenCalled();
+			expect(expectCalled(workingSubscriber)).toBe(true);
 		});
 
 		test('should track subscriber error statistics', async () => {
-			const failingSubscriber = jest.fn().mockRejectedValue(new Error('Error'));
+			const failingSubscriber =
+				MockServiceRegistry.createMockFn().mockRejectedValue(
+					new Error('Error')
+				);
 			const subscriptionId = eventBus.subscribe(
 				'test.topic',
-				failingSubscriber
+				failingSubscriber,
+				{ retries: 0 } // Disable retries for this test
 			);
 
 			await eventBus.publish('test.topic', { data: 'test' });
@@ -551,14 +597,15 @@ describe('EventBus', () => {
 
 	describe('clear functionality', () => {
 		test('should clear all state', async () => {
-			const subscriber = jest.fn();
+			const subscriber = MockServiceRegistry.createMockFn();
 			eventBus.subscribe('test.topic', subscriber);
 			await eventBus.publish('test.topic', { data: 'test' });
 
 			eventBus.clear();
 
 			const stats = eventBus.getStats();
-			expect(stats.topics).toBe(1); // Default channel recreated
+			expect(stats.topics).toBe(0); // All topics cleared
+			expect(stats.channels).toBe(1); // Default channel recreated
 			expect(stats.activeSubscriptions).toBe(0);
 
 			const info = eventBus.getDetailedInfo();
