@@ -190,20 +190,50 @@ export class IntegrationManager {
 	 * Register an integration handler
 	 *
 	 * @param {BaseIntegrationHandler} integration - Integration handler instance
+	 * @param {Object} options - Registration options
+	 * @param {boolean} [options.validateConfig=true] - Whether to validate configuration
+	 * @param {boolean} [options.checkDependencies=true] - Whether to check dependencies
 	 * @returns {void}
 	 */
-	register(integration) {
+	register(integration, options = {}) {
+		const opts = {
+			validateConfig: true,
+			checkDependencies: true,
+			...options
+		};
+
 		if (!(integration instanceof BaseIntegrationHandler)) {
 			throw new Error('Integration must extend BaseIntegrationHandler');
 		}
 
 		const name = integration.getName();
 
+		// Validate configuration if requested
+		if (opts.validateConfig) {
+			const validation = this._validateIntegrationConfig(integration);
+			if (!validation.valid) {
+				throw new Error(
+					`Integration ${name} configuration is invalid: ${validation.errors.join(', ')}`
+				);
+			}
+		}
+
 		if (this.integrations.has(name)) {
 			log('warn', `Integration ${name} is already registered, replacing`);
 		}
 
 		this.integrations.set(name, integration);
+
+		// Check dependencies if requested
+		if (opts.checkDependencies) {
+			const depCheck = this.checkDependencies(name);
+			if (!depCheck.satisfied) {
+				log(
+					'warn',
+					`Integration ${name} has dependency issues: ${depCheck.errors.join(', ')}`
+				);
+			}
+		}
 
 		// Auto-register the integration for all events it can handle
 		this._autoRegisterIntegration(integration);
@@ -269,6 +299,77 @@ export class IntegrationManager {
 	isEnabled(integrationName) {
 		const integration = this.integrations.get(integrationName);
 		return integration ? integration.isEnabled() : false;
+	}
+
+	/**
+	 * Enable an integration
+	 *
+	 * @param {string} integrationName - Name of the integration to enable
+	 * @returns {Promise<void>}
+	 */
+	async enable(integrationName) {
+		const integration = this.integrations.get(integrationName);
+
+		if (!integration) {
+			throw new Error(`Integration ${integrationName} is not registered`);
+		}
+
+		if (integration.isEnabled()) {
+			log('info', `Integration ${integrationName} is already enabled`);
+			return;
+		}
+
+		try {
+			// Update integration configuration to enable it
+			integration.config.enabled = true;
+
+			// Re-initialize if needed
+			if (!integration.initialized) {
+				await integration.initialize(this.config);
+			}
+
+			log('info', `Integration ${integrationName} enabled successfully`);
+		} catch (error) {
+			log(
+				'error',
+				`Failed to enable integration ${integrationName}:`,
+				error.message
+			);
+			throw error;
+		}
+	}
+
+	/**
+	 * Disable an integration
+	 *
+	 * @param {string} integrationName - Name of the integration to disable
+	 * @returns {Promise<void>}
+	 */
+	async disable(integrationName) {
+		const integration = this.integrations.get(integrationName);
+
+		if (!integration) {
+			throw new Error(`Integration ${integrationName} is not registered`);
+		}
+
+		if (!integration.isEnabled()) {
+			log('info', `Integration ${integrationName} is already disabled`);
+			return;
+		}
+
+		try {
+			// Update integration configuration to disable it
+			integration.config.enabled = false;
+
+			log('info', `Integration ${integrationName} disabled successfully`);
+		} catch (error) {
+			log(
+				'error',
+				`Failed to disable integration ${integrationName}:`,
+				error.message
+			);
+			throw error;
+		}
 	}
 
 	/**
@@ -452,6 +553,145 @@ export class IntegrationManager {
 		}
 
 		return status;
+	}
+
+	/**
+	 * List all registered integrations with metadata
+	 *
+	 * @returns {Array} Array of integration metadata
+	 */
+	listIntegrations() {
+		const integrations = [];
+
+		for (const [name, integration] of this.integrations.entries()) {
+			integrations.push({
+				name: integration.getName(),
+				version: integration.getVersion(),
+				enabled: integration.isEnabled(),
+				initialized: integration.initialized,
+				status: integration.getStatus(),
+				config: integration.getConfig()
+			});
+		}
+
+		return integrations.sort((a, b) => a.name.localeCompare(b.name));
+	}
+
+	/**
+	 * Discover integrations by their capabilities
+	 *
+	 * @param {Object} criteria - Discovery criteria
+	 * @param {string[]} [criteria.eventTypes] - Event types the integration should handle
+	 * @param {string} [criteria.version] - Minimum version required
+	 * @param {boolean} [criteria.enabled] - Filter by enabled status
+	 * @returns {Array} Array of matching integrations
+	 */
+	discoverIntegrations(criteria = {}) {
+		const integrations = this.listIntegrations();
+
+		return integrations.filter((integration) => {
+			// Filter by enabled status
+			if (
+				criteria.enabled !== undefined &&
+				integration.enabled !== criteria.enabled
+			) {
+				return false;
+			}
+
+			// Filter by version (basic semver comparison)
+			if (
+				criteria.version &&
+				!this._versionSatisfies(integration.version, criteria.version)
+			) {
+				return false;
+			}
+
+			// Filter by event handling capabilities
+			if (criteria.eventTypes && Array.isArray(criteria.eventTypes)) {
+				const integrationInstance = this.integrations.get(integration.name);
+				const canHandleEvents = criteria.eventTypes.every((eventType) =>
+					this._canHandleEvent(integrationInstance, eventType)
+				);
+				if (!canHandleEvents) {
+					return false;
+				}
+			}
+
+			return true;
+		});
+	}
+
+	/**
+	 * Get integrations that can handle a specific event type
+	 *
+	 * @param {string} eventType - Event type to check
+	 * @returns {Array} Array of integration names
+	 */
+	getIntegrationsForEvent(eventType) {
+		const capableIntegrations = [];
+
+		for (const [name, integration] of this.integrations.entries()) {
+			if (
+				this._canHandleEvent(integration, eventType) &&
+				integration.isEnabled()
+			) {
+				capableIntegrations.push(name);
+			}
+		}
+
+		return capableIntegrations;
+	}
+
+	/**
+	 * Check integration dependencies
+	 *
+	 * @param {string} integrationName - Name of the integration
+	 * @returns {Object} Dependency check result
+	 */
+	checkDependencies(integrationName) {
+		const integration = this.integrations.get(integrationName);
+
+		if (!integration) {
+			return {
+				satisfied: false,
+				missing: [],
+				errors: [`Integration ${integrationName} not found`]
+			};
+		}
+
+		const dependencies = integration.config.dependencies || [];
+		const missing = [];
+		const errors = [];
+
+		for (const dep of dependencies) {
+			const depIntegration = this.integrations.get(dep.name);
+
+			if (!depIntegration) {
+				missing.push(dep.name);
+				errors.push(`Required dependency ${dep.name} is not registered`);
+				continue;
+			}
+
+			if (
+				dep.version &&
+				!this._versionSatisfies(depIntegration.getVersion(), dep.version)
+			) {
+				errors.push(
+					`Dependency ${dep.name} version ${depIntegration.getVersion()} does not satisfy requirement ${dep.version}`
+				);
+				continue;
+			}
+
+			if (!depIntegration.isEnabled()) {
+				errors.push(`Dependency ${dep.name} is not enabled`);
+			}
+		}
+
+		return {
+			satisfied: missing.length === 0 && errors.length === 0,
+			missing,
+			errors
+		};
 	}
 
 	/**
@@ -1012,6 +1252,149 @@ export class IntegrationManager {
 			},
 			errorBoundaries: boundaryStatuses,
 			circuitBreakers: circuitBreakerStatuses
+		};
+	}
+
+	/**
+	 * Check if an integration can handle a specific event type
+	 *
+	 * @param {BaseIntegrationHandler} integration - Integration instance
+	 * @param {string} eventType - Event type to check
+	 * @returns {boolean} True if can handle
+	 * @private
+	 */
+	_canHandleEvent(integration, eventType) {
+		const handlerMethodName = this._getHandlerMethodName(eventType);
+
+		// Check if integration has specific handler method
+		if (typeof integration[handlerMethodName] === 'function') {
+			return true;
+		}
+
+		// Check if integration has generic event handler
+		if (typeof integration.handleGenericEvent === 'function') {
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Simple version comparison (basic semver support)
+	 *
+	 * @param {string} version - Current version
+	 * @param {string} requirement - Required version (supports >=, >, =, <, <=)
+	 * @returns {boolean} True if version satisfies requirement
+	 * @private
+	 */
+	_versionSatisfies(version, requirement) {
+		// Basic version comparison implementation
+		// For production use, consider using a proper semver library
+
+		const parseVersion = (v) => {
+			return v.split('.').map(Number);
+		};
+
+		const compareVersions = (v1, v2) => {
+			const parts1 = parseVersion(v1);
+			const parts2 = parseVersion(v2);
+
+			for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
+				const part1 = parts1[i] || 0;
+				const part2 = parts2[i] || 0;
+
+				if (part1 > part2) return 1;
+				if (part1 < part2) return -1;
+			}
+			return 0;
+		};
+
+		// Extract operator and version from requirement
+		const operatorMatch = requirement.match(/^(>=|>|<=|<|=)?(.+)$/);
+		const operator = operatorMatch ? operatorMatch[1] || '=' : '=';
+		const reqVersion = operatorMatch ? operatorMatch[2] : requirement;
+
+		const comparison = compareVersions(version, reqVersion);
+
+		switch (operator) {
+			case '>=':
+				return comparison >= 0;
+			case '>':
+				return comparison > 0;
+			case '<=':
+				return comparison <= 0;
+			case '<':
+				return comparison < 0;
+			case '=':
+			default:
+				return comparison === 0;
+		}
+	}
+
+	/**
+	 * Validate integration configuration
+	 *
+	 * @param {BaseIntegrationHandler} integration - Integration instance
+	 * @returns {Object} Validation result
+	 * @private
+	 */
+	_validateIntegrationConfig(integration) {
+		const errors = [];
+
+		// Validate basic integration properties
+		if (!integration.getName() || typeof integration.getName() !== 'string') {
+			errors.push('Integration name must be a non-empty string');
+		}
+
+		if (
+			!integration.getVersion() ||
+			typeof integration.getVersion() !== 'string'
+		) {
+			errors.push('Integration version must be a non-empty string');
+		}
+
+		// Use the integration's own validation if available
+		if (typeof integration.validateConfig === 'function') {
+			const configValidation = integration.validateConfig(
+				integration.getConfig()
+			);
+			if (!configValidation.valid) {
+				errors.push(...configValidation.errors);
+			}
+		}
+
+		// Validate configuration structure
+		const config = integration.getConfig();
+		if (config.enabled !== undefined && typeof config.enabled !== 'boolean') {
+			errors.push('enabled must be a boolean');
+		}
+
+		if (
+			config.timeout !== undefined &&
+			(typeof config.timeout !== 'number' || config.timeout <= 0)
+		) {
+			errors.push('timeout must be a positive number');
+		}
+
+		// Validate dependencies structure
+		if (config.dependencies !== undefined) {
+			if (!Array.isArray(config.dependencies)) {
+				errors.push('dependencies must be an array');
+			} else {
+				config.dependencies.forEach((dep, index) => {
+					if (!dep.name || typeof dep.name !== 'string') {
+						errors.push(`dependency[${index}].name must be a non-empty string`);
+					}
+					if (dep.version !== undefined && typeof dep.version !== 'string') {
+						errors.push(`dependency[${index}].version must be a string`);
+					}
+				});
+			}
+		}
+
+		return {
+			valid: errors.length === 0,
+			errors
 		};
 	}
 }

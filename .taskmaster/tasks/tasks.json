@@ -150,7 +150,7 @@
               2
             ],
             "details": "Build a registry for integrations, implement activation/deactivation mechanisms, create configuration validation, and add discovery capabilities. Include versioning support and dependency management between integrations.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 6,
@@ -161,7 +161,7 @@
               5
             ],
             "details": "Modify the addTask command to emit appropriate events, create sample integrations that respond to these events, and demonstrate the full event flow. Document the implementation as a reference for other commands.",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 7,
@@ -1792,7 +1792,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-20T22:59:53.375Z",
+      "updated": "2025-06-21T16:01:22.751Z",
       "description": "Tasks for master context"
     }
   }
