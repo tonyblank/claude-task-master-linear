@@ -22,3 +22,9 @@
 - Using containerized development environment
 - Fork: `tonyblank/claude-task-master-linear`
 - Upstream: `eyaltoledano/claude-task-master`
+
+## Testing Guidelines
+- **Always test Linear integration with real API calls** - Use the LINEAR_API_KEY from .env to verify functionality works with actual Linear API responses
+- **Never put secrets in code** - All API keys and sensitive data must stay in .env files
+- **Verify response parsing with real data** - Don't just test with mocks, ensure parsing works with actual Linear API response structures
+- **Test error handling with real scenarios** - Verify error classification and retry logic work with actual API errors

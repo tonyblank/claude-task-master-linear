@@ -228,7 +228,7 @@
               2
             ],
             "details": "Parse Linear API responses to extract issue IDs, URLs, and other metadata. Handle both successful responses and error cases. Create standardized response objects that include issue ID, URL, and any relevant metadata for storage.",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 4,
@@ -238,7 +238,7 @@
               3
             ],
             "details": "Implement file locking or temporary file approach for atomic updates. Read existing file content, update with new Linear ID mapping, and write back atomically. Handle concurrent access scenarios and ensure data integrity during crashes.",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 5,
@@ -1879,7 +1879,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-22T03:08:12.146Z",
+      "updated": "2025-06-22T03:17:26.111Z",
       "description": "Tasks for master context"
     }
   }

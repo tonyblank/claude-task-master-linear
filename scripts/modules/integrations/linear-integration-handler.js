@@ -176,12 +176,29 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 
 			log('info', `Linear issue created: ${issue.identifier} - ${issue.url}`);
 
+			// Create standardized response object
+			const standardizedResponse = this._createStandardizedResponse(
+				issue,
+				'createIssue'
+			);
+
 			// Save the Linear issue ID back to the task atomically
 			const linearIssueInfo = {
 				id: issue.id,
 				identifier: issue.identifier,
 				url: issue.url,
-				...(issue.branchName && { branchName: issue.branchName })
+				...(issue.branchName && { branchName: issue.branchName }),
+				// Include additional metadata from parsed response
+				title: issue.title,
+				state: issue.state,
+				priority: issue.priority,
+				team: issue.team,
+				project: issue.project,
+				labels: issue.labels,
+				assignee: issue.assignee,
+				number: issue.number,
+				createdAt: issue.createdAt,
+				updatedAt: issue.updatedAt
 			};
 
 			const updatedTask = await this._updateTaskWithLinearIssue(
@@ -195,14 +212,10 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				`Task #${task.id} successfully linked to Linear issue ${issue.identifier}`
 			);
 
+			// Return both the standardized response and backward-compatible format
 			return {
+				...standardizedResponse,
 				action: 'created',
-				linearIssue: {
-					id: issue.id,
-					identifier: issue.identifier,
-					url: issue.url,
-					title: issue.title
-				},
 				task: {
 					id: task.id,
 					title: task.title
@@ -215,6 +228,19 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				`Failed to create Linear issue for task #${task.id}:`,
 				error.message
 			);
+
+			// Create standardized error response
+			const errorResponse = this._createErrorResponse(error, 'createIssue');
+
+			// Add task context to error response
+			errorResponse.task = {
+				id: task.id,
+				title: task.title
+			};
+
+			// For backward compatibility, still throw the error
+			// but consumers can also check for standardized error responses
+			error.standardizedResponse = errorResponse;
 			throw error;
 		}
 	}
@@ -371,7 +397,8 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				'create issue'
 			);
 
-			const issue = await issuePayload.issue;
+			// Parse and validate the response
+			const issue = this._parseLinearResponse(issuePayload, 'createIssue');
 
 			// Add source label if configured
 			if (
@@ -464,6 +491,351 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				`Linear API error during ${operationName}: ${error.message}`
 			);
 		}
+	}
+
+	/**
+	 * Parse Linear API response and extract required data
+	 *
+	 * @param {Object} response - Raw Linear API response
+	 * @param {string} operationType - Type of operation (createIssue, updateIssue, etc.)
+	 * @returns {Object} Parsed response data
+	 * @throws {Error} If response parsing fails
+	 * @private
+	 */
+	_parseLinearResponse(response, operationType) {
+		try {
+			// Validate response structure
+			if (!response) {
+				throw new Error(`Empty response received for ${operationType}`);
+			}
+
+			// Handle different operation types
+			switch (operationType) {
+				case 'createIssue':
+					return this._parseCreateIssueResponse(response);
+				case 'updateIssue':
+					return this._parseUpdateIssueResponse(response);
+				case 'createLabel':
+					return this._parseLabelResponse(response);
+				case 'findLabels':
+					return this._parseLabelsListResponse(response);
+				default:
+					return this._parseGenericResponse(response);
+			}
+		} catch (error) {
+			log(
+				'error',
+				`Failed to parse Linear response for ${operationType}:`,
+				error.message
+			);
+			throw new Error(
+				`Response parsing failed for ${operationType}: ${error.message}`
+			);
+		}
+	}
+
+	/**
+	 * Parse create issue response to extract issue information
+	 *
+	 * @param {Object} response - Raw create issue response
+	 * @returns {Object} Parsed issue data
+	 * @throws {Error} If required fields are missing
+	 * @private
+	 */
+	_parseCreateIssueResponse(response) {
+		// Handle both direct issue object and payload wrapper
+		const issue = response.issue || response;
+
+		if (!issue) {
+			throw new Error('No issue data found in response');
+		}
+
+		// Validate required fields
+		const requiredFields = ['id', 'identifier'];
+		const missingFields = requiredFields.filter((field) => !issue[field]);
+
+		if (missingFields.length > 0) {
+			throw new Error(
+				`Missing required fields in issue response: ${missingFields.join(', ')}`
+			);
+		}
+
+		// Extract and normalize issue data
+		const parsedIssue = {
+			id: issue.id,
+			identifier: issue.identifier,
+			title: issue.title || 'Untitled',
+			url: issue.url || this._constructIssueUrl(issue.identifier),
+			state: issue.state
+				? {
+						id: issue.state.id,
+						name: issue.state.name,
+						type: issue.state.type
+					}
+				: null,
+			priority: issue.priority || null,
+			labels: issue.labels ? this._parseLabelsFromIssue(issue.labels) : [],
+			team: issue.team
+				? {
+						id: issue.team.id,
+						name: issue.team.name,
+						key: issue.team.key
+					}
+				: null,
+			project: issue.project
+				? {
+						id: issue.project.id,
+						name: issue.project.name
+					}
+				: null,
+			createdAt: issue.createdAt || new Date().toISOString(),
+			updatedAt: issue.updatedAt || new Date().toISOString(),
+			// Extract additional metadata that might be useful
+			number: issue.number || null,
+			branchName: issue.branchName || null,
+			assignee: issue.assignee
+				? {
+						id: issue.assignee.id,
+						name: issue.assignee.name,
+						email: issue.assignee.email
+					}
+				: null
+		};
+
+		log(
+			'debug',
+			`Parsed create issue response:`,
+			JSON.stringify(parsedIssue, null, 2)
+		);
+		return parsedIssue;
+	}
+
+	/**
+	 * Parse update issue response
+	 *
+	 * @param {Object} response - Raw update issue response
+	 * @returns {Object} Parsed issue data
+	 * @private
+	 */
+	_parseUpdateIssueResponse(response) {
+		// Update responses typically have the same structure as create responses
+		return this._parseCreateIssueResponse(response);
+	}
+
+	/**
+	 * Parse label creation/retrieval response
+	 *
+	 * @param {Object} response - Raw label response
+	 * @returns {Object} Parsed label data
+	 * @private
+	 */
+	_parseLabelResponse(response) {
+		const label = response.label || response;
+
+		if (!label || !label.id) {
+			throw new Error('Invalid label response - missing label ID');
+		}
+
+		return {
+			id: label.id,
+			name: label.name || 'Unnamed Label',
+			color: label.color || '#808080',
+			team: label.team
+				? {
+						id: label.team.id,
+						name: label.team.name
+					}
+				: null,
+			createdAt: label.createdAt || new Date().toISOString()
+		};
+	}
+
+	/**
+	 * Parse labels list response (for finding existing labels)
+	 *
+	 * @param {Object} response - Raw labels list response
+	 * @returns {Array} Array of parsed label data
+	 * @private
+	 */
+	_parseLabelsListResponse(response) {
+		if (!response.nodes) {
+			return [];
+		}
+
+		return response.nodes.map((label) => this._parseLabelResponse(label));
+	}
+
+	/**
+	 * Parse generic Linear API response
+	 *
+	 * @param {Object} response - Raw response
+	 * @returns {Object} Response data
+	 * @private
+	 */
+	_parseGenericResponse(response) {
+		// For generic responses, return as-is but ensure it's an object
+		if (typeof response !== 'object' || response === null) {
+			throw new Error('Invalid response format - expected object');
+		}
+
+		return response;
+	}
+
+	/**
+	 * Parse labels from issue response
+	 *
+	 * @param {Object} labelsData - Labels data from issue
+	 * @returns {Array} Array of label information
+	 * @private
+	 */
+	_parseLabelsFromIssue(labelsData) {
+		if (!labelsData || !labelsData.nodes) {
+			return [];
+		}
+
+		return labelsData.nodes.map((label) => ({
+			id: label.id,
+			name: label.name,
+			color: label.color
+		}));
+	}
+
+	/**
+	 * Construct issue URL if not provided in response
+	 *
+	 * @param {string} identifier - Issue identifier (e.g., "TM-123")
+	 * @returns {string} Constructed URL
+	 * @private
+	 */
+	_constructIssueUrl(identifier) {
+		// This is a fallback - Linear should provide URLs in responses
+		// but we can construct one based on the team identifier
+		if (!identifier) {
+			return null;
+		}
+
+		// Extract team key from identifier (e.g., "TM" from "TM-123")
+		const teamKey = identifier.split('-')[0];
+		return `https://linear.app/team/${teamKey.toLowerCase()}/issue/${identifier}`;
+	}
+
+	/**
+	 * Create standardized response object for storage
+	 *
+	 * @param {Object} parsedIssue - Parsed issue data
+	 * @param {string} operationType - Type of operation performed
+	 * @returns {Object} Standardized response object
+	 */
+	_createStandardizedResponse(parsedIssue, operationType = 'createIssue') {
+		return {
+			success: true,
+			operation: operationType,
+			timestamp: new Date().toISOString(),
+			data: {
+				// Core identifiers
+				issueId: parsedIssue.id,
+				identifier: parsedIssue.identifier,
+				url: parsedIssue.url,
+
+				// Issue details
+				title: parsedIssue.title,
+				state: parsedIssue.state,
+				priority: parsedIssue.priority,
+
+				// Organizational data
+				team: parsedIssue.team,
+				project: parsedIssue.project,
+				labels: parsedIssue.labels,
+				assignee: parsedIssue.assignee,
+
+				// Metadata
+				number: parsedIssue.number,
+				branchName: parsedIssue.branchName,
+				createdAt: parsedIssue.createdAt,
+				updatedAt: parsedIssue.updatedAt
+			},
+			// For backward compatibility with existing code
+			linearIssue: {
+				id: parsedIssue.id,
+				identifier: parsedIssue.identifier,
+				url: parsedIssue.url,
+				title: parsedIssue.title
+			}
+		};
+	}
+
+	/**
+	 * Handle Linear API errors and create standardized error response
+	 *
+	 * @param {Error} error - Original error
+	 * @param {string} operationType - Type of operation that failed
+	 * @returns {Object} Standardized error response
+	 */
+	_createErrorResponse(error, operationType) {
+		return {
+			success: false,
+			operation: operationType,
+			timestamp: new Date().toISOString(),
+			error: {
+				message: error.message,
+				type: this._classifyError(error),
+				code: error.code || error.status || 'UNKNOWN',
+				retryable: this._isRetryableError(error)
+			}
+		};
+	}
+
+	/**
+	 * Classify error type for better handling
+	 *
+	 * @param {Error} error - Error to classify
+	 * @returns {string} Error classification
+	 * @private
+	 */
+	_classifyError(error) {
+		const message = error.message?.toLowerCase() || '';
+
+		if (
+			message.includes('authentication') ||
+			message.includes('unauthorized')
+		) {
+			return 'AUTHENTICATION_ERROR';
+		}
+		if (message.includes('rate limit') || error.status === 429) {
+			return 'RATE_LIMIT_ERROR';
+		}
+		if (message.includes('not found') || error.status === 404) {
+			return 'NOT_FOUND_ERROR';
+		}
+		if (message.includes('forbidden') || error.status === 403) {
+			return 'PERMISSION_ERROR';
+		}
+		if (message.includes('validation') || error.status === 400) {
+			return 'VALIDATION_ERROR';
+		}
+		if (message.includes('network') || message.includes('timeout')) {
+			return 'NETWORK_ERROR';
+		}
+
+		return 'UNKNOWN_ERROR';
+	}
+
+	/**
+	 * Determine if an error is retryable
+	 *
+	 * @param {Error} error - Error to check
+	 * @returns {boolean} True if error is retryable
+	 * @private
+	 */
+	_isRetryableError(error) {
+		const errorType = this._classifyError(error);
+		const retryableTypes = [
+			'RATE_LIMIT_ERROR',
+			'NETWORK_ERROR',
+			'UNKNOWN_ERROR'
+		];
+
+		return retryableTypes.includes(errorType);
 	}
 
 	/**
@@ -568,7 +940,7 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	async _findOrCreateLabel(labelName) {
 		try {
 			// First try to find existing label
-			const labels = await this._performLinearRequest(
+			const labelsResponse = await this._performLinearRequest(
 				() =>
 					this.linear.labels({
 						filter: { name: { eq: labelName } }
@@ -576,8 +948,11 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				`find label "${labelName}"`
 			);
 
-			if (labels.nodes && labels.nodes.length > 0) {
-				return labels.nodes[0];
+			// Parse the labels list response
+			const labels = this._parseLinearResponse(labelsResponse, 'findLabels');
+
+			if (labels && labels.length > 0) {
+				return labels[0];
 			}
 
 			// Create new label if not found
@@ -590,7 +965,8 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				`create label "${labelName}"`
 			);
 
-			return await labelPayload.label;
+			// Parse the label creation response
+			return this._parseLinearResponse(labelPayload, 'createLabel');
 		} catch (error) {
 			log(
 				'warn',
