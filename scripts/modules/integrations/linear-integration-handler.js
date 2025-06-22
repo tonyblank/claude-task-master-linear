@@ -21,6 +21,8 @@ import {
 	getLinearStatusMapping
 } from '../config-manager.js';
 import path from 'path';
+import fs from 'fs';
+import { randomBytes } from 'crypto';
 
 /**
  * Escapes HTML characters to prevent XSS
@@ -1034,7 +1036,7 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	}
 
 	/**
-	 * Atomically update task with Linear issue information
+	 * Atomically update task with Linear issue information using safe file operations
 	 *
 	 * @param {number|string} taskId - Task ID to update
 	 * @param {Object} linearIssue - Linear issue information
@@ -1047,6 +1049,35 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	 * @private
 	 */
 	async _updateTaskWithLinearIssue(taskId, linearIssue, projectRoot = null) {
+		// Use the enhanced atomic file update mechanism
+		return await this._performAtomicFileUpdate(
+			taskId,
+			linearIssue,
+			projectRoot,
+			'updateLinearIssue'
+		);
+	}
+
+	/**
+	 * Perform atomic file update with comprehensive safety mechanisms
+	 *
+	 * @param {number|string} taskId - Task ID to update
+	 * @param {Object} updateData - Data to update the task with
+	 * @param {string} [projectRoot] - Project root directory
+	 * @param {string} operationType - Type of operation for logging
+	 * @returns {Promise<Object>} Updated task
+	 * @private
+	 */
+	async _performAtomicFileUpdate(
+		taskId,
+		updateData,
+		projectRoot = null,
+		operationType = 'updateTask'
+	) {
+		let lockFile = null;
+		let backupFile = null;
+		let tempFile = null;
+
 		try {
 			// Determine project root if not provided
 			const actualProjectRoot = projectRoot || findProjectRoot();
@@ -1065,13 +1096,21 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			// Get current tag
 			const currentTag = getCurrentTag(actualProjectRoot);
 
-			// 1. Read current data with tag resolution
+			// Step 1: Acquire file lock
+			lockFile = await this._acquireFileLock(tasksPath);
+			log('debug', `Acquired file lock for atomic update: ${lockFile}`);
+
+			// Step 2: Create backup
+			backupFile = await this._createBackupFile(tasksPath);
+			log('debug', `Created backup file: ${backupFile}`);
+
+			// Step 3: Read current data with tag resolution
 			const data = readJSON(tasksPath, actualProjectRoot, currentTag);
 			if (!data || !data.tasks) {
 				throw new Error('No valid tasks found in tasks.json');
 			}
 
-			// 2. Find the task to update
+			// Step 4: Find the task to update
 			const taskIndex = data.tasks.findIndex(
 				(task) => task.id === taskId || task.id === parseInt(taskId)
 			);
@@ -1080,43 +1119,345 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				throw new Error(`Task ${taskId} not found in tasks.json`);
 			}
 
-			// 3. Update task with Linear information
-			const updatedTask = {
-				...data.tasks[taskIndex],
-				integrations: {
-					...data.tasks[taskIndex].integrations,
-					linear: {
-						issueId: linearIssue.id,
-						identifier: linearIssue.identifier,
-						url: linearIssue.url,
-						...(linearIssue.branchName && {
-							branchName: linearIssue.branchName
-						}),
-						syncedAt: new Date().toISOString(),
-						status: 'synced'
-					}
-				}
-			};
+			// Step 5: Apply update based on operation type
+			const updatedTask = this._applyTaskUpdate(
+				data.tasks[taskIndex],
+				updateData,
+				operationType
+			);
 
-			// 4. Update the tasks array
+			// Step 6: Update the tasks array
 			data.tasks[taskIndex] = updatedTask;
 
-			// 5. Write atomically using the utility function
-			writeJSON(tasksPath, data, actualProjectRoot, currentTag);
-
-			log(
-				'info',
-				`Task #${taskId} updated with Linear issue ${linearIssue.identifier}`
+			// Step 7: Write to temporary file first
+			tempFile = await this._writeToTempFile(
+				tasksPath,
+				data,
+				actualProjectRoot,
+				currentTag
 			);
+			log('debug', `Wrote data to temporary file: ${tempFile}`);
+
+			// Step 8: Atomically move temp file to final location
+			await this._atomicMove(tempFile, tasksPath);
+			log('debug', 'Atomically moved temp file to final location');
+
+			// Step 9: Clean up backup file (operation successful)
+			await this._cleanupBackupFile(backupFile);
+
+			log('info', `Task #${taskId} atomically updated via ${operationType}`);
 
 			return updatedTask;
 		} catch (error) {
 			log(
 				'error',
-				`Failed to update task #${taskId} with Linear issue:`,
+				`Atomic file update failed for task #${taskId} (${operationType}):`,
 				error.message
 			);
+
+			// Rollback: Restore from backup if available
+			if (backupFile) {
+				await this._rollbackFromBackup(backupFile, tasksPath);
+			}
+
 			throw error;
+		} finally {
+			// Always clean up resources
+			await this._cleanupAtomicOperation(lockFile, backupFile, tempFile);
+		}
+	}
+
+	/**
+	 * Apply update to task based on operation type
+	 *
+	 * @param {Object} task - Original task object
+	 * @param {Object} updateData - Update data
+	 * @param {string} operationType - Type of operation
+	 * @returns {Object} Updated task
+	 * @private
+	 */
+	_applyTaskUpdate(task, updateData, operationType) {
+		switch (operationType) {
+			case 'updateLinearIssue':
+				return {
+					...task,
+					integrations: {
+						...task.integrations,
+						linear: {
+							issueId: updateData.id,
+							identifier: updateData.identifier,
+							url: updateData.url,
+							...(updateData.branchName && {
+								branchName: updateData.branchName
+							}),
+							...(updateData.title && { title: updateData.title }),
+							...(updateData.state && { state: updateData.state }),
+							...(updateData.priority && { priority: updateData.priority }),
+							...(updateData.team && { team: updateData.team }),
+							...(updateData.project && { project: updateData.project }),
+							...(updateData.labels && { labels: updateData.labels }),
+							...(updateData.assignee && { assignee: updateData.assignee }),
+							...(updateData.number && { number: updateData.number }),
+							...(updateData.createdAt && { createdAt: updateData.createdAt }),
+							...(updateData.updatedAt && { updatedAt: updateData.updatedAt }),
+							syncedAt: new Date().toISOString(),
+							status: 'synced'
+						}
+					}
+				};
+			default:
+				throw new Error(`Unknown operation type: ${operationType}`);
+		}
+	}
+
+	/**
+	 * Acquire file lock to prevent concurrent access
+	 *
+	 * @param {string} filePath - Path to the file to lock
+	 * @returns {Promise<string>} Lock file path
+	 * @private
+	 */
+	async _acquireFileLock(filePath) {
+		const lockPath = `${filePath}.lock`;
+		const maxRetries = 10;
+		const retryDelay = 100; // milliseconds
+		const lockTimeout = 30000; // 30 seconds
+
+		for (let attempt = 1; attempt <= maxRetries; attempt++) {
+			try {
+				// Try to create lock file exclusively
+				const lockData = {
+					pid: process.pid,
+					timestamp: new Date().toISOString(),
+					operation: 'linear-integration-update'
+				};
+
+				fs.writeFileSync(lockPath, JSON.stringify(lockData), { flag: 'wx' });
+
+				// Set up cleanup timeout
+				setTimeout(() => {
+					this._forceCleanupLock(lockPath);
+				}, lockTimeout);
+
+				return lockPath;
+			} catch (error) {
+				if (error.code === 'EEXIST') {
+					// Lock file exists, check if it's stale
+					if (await this._isLockStale(lockPath)) {
+						log('warn', `Removing stale lock file: ${lockPath}`);
+						await this._forceCleanupLock(lockPath);
+						continue; // Retry
+					}
+
+					if (attempt === maxRetries) {
+						throw new Error(
+							`Could not acquire file lock after ${maxRetries} attempts`
+						);
+					}
+
+					// Wait before retry
+					await new Promise((resolve) =>
+						setTimeout(resolve, retryDelay * attempt)
+					);
+				} else {
+					throw new Error(`Failed to create lock file: ${error.message}`);
+				}
+			}
+		}
+
+		throw new Error('Failed to acquire file lock');
+	}
+
+	/**
+	 * Check if a lock file is stale (process no longer exists or too old)
+	 *
+	 * @param {string} lockPath - Path to lock file
+	 * @returns {Promise<boolean>} True if lock is stale
+	 * @private
+	 */
+	async _isLockStale(lockPath) {
+		try {
+			const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+			const lockAge = Date.now() - new Date(lockData.timestamp).getTime();
+
+			// Lock is stale if older than 30 seconds
+			if (lockAge > 30000) {
+				return true;
+			}
+
+			// Check if process still exists (Unix/Linux)
+			if (process.platform !== 'win32') {
+				try {
+					process.kill(lockData.pid, 0); // Signal 0 checks existence without killing
+					return false; // Process exists, lock is not stale
+				} catch (error) {
+					return true; // Process doesn't exist, lock is stale
+				}
+			}
+
+			return false;
+		} catch (error) {
+			// If we can't read the lock file, consider it stale
+			return true;
+		}
+	}
+
+	/**
+	 * Force cleanup of lock file
+	 *
+	 * @param {string} lockPath - Path to lock file
+	 * @private
+	 */
+	async _forceCleanupLock(lockPath) {
+		try {
+			fs.unlinkSync(lockPath);
+		} catch (error) {
+			// Ignore errors during force cleanup
+		}
+	}
+
+	/**
+	 * Create backup file before modification
+	 *
+	 * @param {string} filePath - Original file path
+	 * @returns {Promise<string>} Backup file path
+	 * @private
+	 */
+	async _createBackupFile(filePath) {
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+		const randomSuffix = randomBytes(4).toString('hex');
+		const backupPath = `${filePath}.backup-${timestamp}-${randomSuffix}`;
+
+		try {
+			fs.copyFileSync(filePath, backupPath);
+			return backupPath;
+		} catch (error) {
+			throw new Error(`Failed to create backup file: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Write data to temporary file
+	 *
+	 * @param {string} originalPath - Original file path
+	 * @param {Object} data - Data to write
+	 * @param {string} projectRoot - Project root directory
+	 * @param {string} currentTag - Current tag
+	 * @returns {Promise<string>} Temporary file path
+	 * @private
+	 */
+	async _writeToTempFile(originalPath, data, projectRoot, currentTag) {
+		const randomSuffix = randomBytes(8).toString('hex');
+		const tempPath = `${originalPath}.tmp-${randomSuffix}`;
+
+		try {
+			// Use the same writeJSON logic but write to temp file
+			const { _rawTaggedData, tag: _, ...cleanResolvedData } = data;
+
+			let finalData = data;
+			if (data && data._rawTaggedData && projectRoot) {
+				// Handle tagged data structure
+				const originalTaggedData = data._rawTaggedData;
+				finalData = {
+					...originalTaggedData,
+					[currentTag]: cleanResolvedData
+				};
+			}
+
+			// Clean up any internal properties
+			if (finalData && typeof finalData === 'object') {
+				const { _rawTaggedData, tag: tagProp, ...rootCleanData } = finalData;
+				finalData = rootCleanData;
+			}
+
+			fs.writeFileSync(tempPath, JSON.stringify(finalData, null, 2), 'utf8');
+			return tempPath;
+		} catch (error) {
+			throw new Error(`Failed to write to temporary file: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Atomically move temporary file to final location
+	 *
+	 * @param {string} tempPath - Temporary file path
+	 * @param {string} finalPath - Final file path
+	 * @private
+	 */
+	async _atomicMove(tempPath, finalPath) {
+		try {
+			fs.renameSync(tempPath, finalPath);
+		} catch (error) {
+			throw new Error(`Failed to atomically move file: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Rollback from backup file
+	 *
+	 * @param {string} backupPath - Backup file path
+	 * @param {string} originalPath - Original file path
+	 * @private
+	 */
+	async _rollbackFromBackup(backupPath, originalPath) {
+		try {
+			if (fs.existsSync(backupPath)) {
+				fs.copyFileSync(backupPath, originalPath);
+				log('info', `Rolled back from backup: ${backupPath}`);
+			}
+		} catch (error) {
+			log('error', `Failed to rollback from backup: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Clean up backup file after successful operation
+	 *
+	 * @param {string} backupPath - Backup file path
+	 * @private
+	 */
+	async _cleanupBackupFile(backupPath) {
+		try {
+			if (backupPath && fs.existsSync(backupPath)) {
+				fs.unlinkSync(backupPath);
+			}
+		} catch (error) {
+			log('warn', `Failed to cleanup backup file: ${error.message}`);
+		}
+	}
+
+	/**
+	 * Clean up all atomic operation resources
+	 *
+	 * @param {string} lockFile - Lock file path
+	 * @param {string} backupFile - Backup file path
+	 * @param {string} tempFile - Temporary file path
+	 * @private
+	 */
+	async _cleanupAtomicOperation(lockFile, backupFile, tempFile) {
+		// Clean up lock file
+		if (lockFile) {
+			try {
+				fs.unlinkSync(lockFile);
+			} catch (error) {
+				log('warn', `Failed to cleanup lock file: ${error.message}`);
+			}
+		}
+
+		// Clean up backup file (in case of error)
+		if (backupFile) {
+			await this._cleanupBackupFile(backupFile);
+		}
+
+		// Clean up temp file (in case of error)
+		if (tempFile) {
+			try {
+				if (fs.existsSync(tempFile)) {
+					fs.unlinkSync(tempFile);
+				}
+			} catch (error) {
+				log('warn', `Failed to cleanup temp file: ${error.message}`);
+			}
 		}
 	}
 
