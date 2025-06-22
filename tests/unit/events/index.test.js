@@ -156,7 +156,16 @@ describe('Event System Index', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test description',
+						details: 'Test details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				context

@@ -192,7 +192,7 @@ describe('Example: Benefits Demonstration', () => {
 		// Can generate load test events
 		const events = stressEnv.generateEvents(10);
 		expect(events).toHaveLength(10);
-		expect(events[0].context.stress).toBe(true);
+		expect(events[0].tag).toBe('stress-test');
 	});
 });
 

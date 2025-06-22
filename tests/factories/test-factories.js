@@ -8,6 +8,7 @@
 import { IntegrationManager } from '../../scripts/modules/events/integration-manager-di.js';
 import { MockServiceRegistry } from '../mocks/service-registry.js';
 import { DependencyContainer } from '../../scripts/modules/core/dependency-container.js';
+import { BaseIntegrationHandler } from '../../scripts/modules/events/base-integration-handler.js';
 
 /**
  * Test Factory Class
@@ -257,27 +258,42 @@ export class TestFactories {
 	 * Create a test integration handler
 	 * @param {string} name - Handler name
 	 * @param {Object} options - Handler configuration
-	 * @returns {Object} Mock integration handler
+	 * @returns {Object} Mock integration handler that extends BaseIntegrationHandler
 	 */
 	static createTestIntegrationHandler(name = 'test-integration', options = {}) {
-		const handler = {
-			getName: MockServiceRegistry.createMockFn(() => name),
-			isEnabled: MockServiceRegistry.createMockFn(() => true),
-			initialize: MockServiceRegistry.createMockFn(async () => {}),
-			shutdown: MockServiceRegistry.createMockFn(async () => {}),
-			handleEvent: MockServiceRegistry.createMockFn(
-				async (eventType, payload) => ({ handled: true, eventType, payload })
-			),
-			getStatus: MockServiceRegistry.createMockFn(() => ({
-				name,
-				enabled: true,
-				initialized: true,
-				lastActivity: Date.now()
-			})),
-			...(options.methods || {})
-		};
+		class TestIntegrationHandler extends BaseIntegrationHandler {
+			constructor(handlerName = name, config = {}) {
+				super(handlerName, '1.0.0', { enabled: true, ...config });
+			}
 
-		// Add event-specific handlers if specified
+			async _performInitialization(config) {
+				// Mock initialization
+			}
+
+			async _performShutdown() {
+				// Mock shutdown
+			}
+
+			async _routeEvent(eventType, payload) {
+				// Add event-specific handlers if specified
+				if (options.eventHandlers && options.eventHandlers[eventType]) {
+					return await options.eventHandlers[eventType](payload);
+				}
+
+				// Convert to handler method name
+				const methodName = this._getHandlerMethodName(eventType);
+				if (typeof this[methodName] === 'function') {
+					return await this[methodName](payload);
+				}
+
+				// Default response
+				return { handled: true, eventType, payload };
+			}
+		}
+
+		const handler = new TestIntegrationHandler(name, options.config || {});
+
+		// Add event-specific handlers as methods if specified
 		if (options.eventHandlers) {
 			for (const [eventType, handlerFn] of Object.entries(
 				options.eventHandlers
@@ -291,6 +307,14 @@ export class TestFactories {
 				handler[methodName] = MockServiceRegistry.createMockFn(handlerFn);
 			}
 		}
+
+		// Add any additional methods from options
+		if (options.methods) {
+			Object.assign(handler, options.methods);
+		}
+
+		// Initialize the handler
+		handler.initialize().catch(() => {}); // Ignore errors in test setup
 
 		return handler;
 	}
@@ -379,9 +403,9 @@ export class TestFactories {
 			const handler = TestFactories.createTestIntegrationHandler(
 				`stress-handler-${i}`,
 				{
-					methods: {
-						handleEvent: MockServiceRegistry.createMockFn(
-							async (eventType, payload) => {
+					eventHandlers: {
+						'task:created': MockServiceRegistry.createMockFn(
+							async (payload) => {
 								// Simulate processing latency
 								await new Promise((resolve) =>
 									setTimeout(resolve, perfConfig.handlerLatency)
@@ -392,7 +416,7 @@ export class TestFactories {
 									throw new Error(`Simulated error in handler ${i}`);
 								}
 
-								return { handled: true, handler: i, eventType };
+								return { handled: true, handler: i, payload };
 							}
 						)
 					}
@@ -416,13 +440,20 @@ export class TestFactories {
 			generateEvents: (count = perfConfig.eventCount) => {
 				const events = [];
 				for (let i = 0; i < count; i++) {
-					events.push(
-						TestFactories.createTestEventPayload(
-							'test:stress-event',
-							{ id: i, timestamp: Date.now() },
-							{ stress: true }
-						)
-					);
+					events.push({
+						taskId: `stress-task-${i}`,
+						task: {
+							id: `stress-task-${i}`,
+							title: `Stress Test Task ${i}`,
+							description: 'Stress test task description',
+							details: 'Stress test task details',
+							status: 'pending',
+							priority: 'medium',
+							dependencies: [],
+							subtasks: []
+						},
+						tag: 'stress-test'
+					});
 				}
 				return events;
 			}

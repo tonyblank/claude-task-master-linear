@@ -301,6 +301,7 @@ export class MockServiceRegistry {
 				failures: 0,
 				successes: 0
 			})),
+			isOpen: createMockFn(() => false),
 			reset: createMockFn(),
 			execute: createMockFn(async (fn) => await fn()),
 			recordSuccess: createMockFn(),
@@ -556,22 +557,26 @@ export class MockServiceRegistry {
 
 		const mockTimer = {
 			setTimeout: createMockFn((fn, delay) => {
-				const id = Math.random();
+				// Use real setTimeout for actual timeouts to work in tests
+				const id = setTimeout(fn, delay);
 				timers.set(id, { fn, delay, type: 'timeout' });
 				return id;
 			}),
 			setInterval: createMockFn((fn, interval) => {
-				const id = Math.random();
+				// Use real setInterval for actual intervals to work in tests
+				const id = setInterval(fn, interval);
 				timers.set(id, { fn, interval, type: 'interval' });
 				return id;
 			}),
 			clearTimeout: createMockFn((id) => {
+				clearTimeout(id);
 				timers.delete(id);
 			}),
 			clearInterval: createMockFn((id) => {
+				clearInterval(id);
 				timers.delete(id);
 			}),
-			now: createMockFn(() => currentTime),
+			now: createMockFn(() => Date.now()),
 			// Test utilities
 			_getTimers: () => timers,
 			_setCurrentTime: (time) => {

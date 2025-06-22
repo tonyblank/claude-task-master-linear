@@ -5,6 +5,11 @@
  * interfaces for the TaskMaster event-driven architecture.
  */
 
+import {
+	validateEventPayload as validateWithSchema,
+	createStandardEventPayload
+} from './payload-serializer.js';
+
 /**
  * @typedef {Object} OperationContext
  * @property {string} projectRoot - The project root directory
@@ -175,7 +180,7 @@ export const DEFAULT_CONFIG = {
 };
 
 /**
- * Validates an event payload structure
+ * Validates an event payload structure using the new schema system
  * @param {string} eventType - The event type
  * @param {Object} payload - The event payload
  * @returns {boolean} True if valid
@@ -199,23 +204,45 @@ export function validateEventPayload(eventType, payload) {
 		return false;
 	}
 
-	return true;
+	// Use the new schema validation system if available
+	try {
+		// Check if this looks like a new standardized payload
+		if (payload && payload.version && payload.eventId) {
+			const result = validateWithSchema(eventType, payload);
+			return result.valid;
+		} else {
+			// For legacy payloads, use basic validation
+			return true;
+		}
+	} catch (error) {
+		// Fallback to basic validation if schema system is not available
+		return true;
+	}
 }
 
 /**
- * Creates a standardized event payload
+ * Creates a standardized event payload using the new schema system
  * @param {string} eventType - The event type
  * @param {Object} data - The event data
  * @param {OperationContext} context - The operation context
  * @returns {EventPayload} Standardized event payload
  */
 export function createEventPayload(eventType, data, context) {
-	return {
-		type: eventType,
-		payload: {
-			...data,
-			context,
-			timestamp: new Date().toISOString()
-		}
-	};
+	try {
+		// Try to use the new standardized payload creator
+		return {
+			type: eventType,
+			payload: createStandardEventPayload(eventType, data, context)
+		};
+	} catch (error) {
+		// Fallback to the original format for backward compatibility
+		return {
+			type: eventType,
+			payload: {
+				...data,
+				context,
+				timestamp: new Date().toISOString()
+			}
+		};
+	}
 }

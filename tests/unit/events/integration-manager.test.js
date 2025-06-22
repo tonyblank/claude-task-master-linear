@@ -54,6 +54,23 @@ describe('IntegrationManager', () => {
 	let testIntegration;
 	let mockContext;
 
+	function createValidTaskData(id = 'task-123', title = 'Test Task') {
+		return {
+			taskId: id,
+			task: {
+				id,
+				title,
+				description: 'Test task description',
+				details: 'Test task details',
+				status: 'pending',
+				priority: 'medium',
+				dependencies: [],
+				subtasks: []
+			},
+			tag: 'master'
+		};
+	}
+
 	beforeEach(() => {
 		manager = new IntegrationManager({
 			maxConcurrentHandlers: 2,
@@ -66,7 +83,7 @@ describe('IntegrationManager', () => {
 		mockContext = {
 			projectRoot: '/test/project',
 			session: { user: 'testuser' },
-			source: 'test',
+			source: 'cli',
 			requestId: 'test-req-123'
 		};
 	});
@@ -224,7 +241,16 @@ describe('IntegrationManager', () => {
 		test('should emit and handle events successfully', async () => {
 			const taskData = {
 				taskId: 'task-123',
-				task: { id: 'task-123', title: 'Test Task', status: 'pending' },
+				task: {
+					id: 'task-123',
+					title: 'Test Task',
+					description: 'Test task description',
+					details: 'Test task details',
+					status: 'pending',
+					priority: 'medium',
+					dependencies: [],
+					subtasks: []
+				},
 				tag: 'master'
 			};
 
@@ -306,7 +332,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -335,7 +370,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -362,7 +406,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -398,7 +451,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -435,7 +497,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -464,7 +535,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -491,7 +571,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'filtered-task',
-					task: { id: 'filtered-task' },
+					task: {
+						id: 'filtered-task',
+						title: 'Filtered Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -521,7 +610,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -553,7 +651,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -582,7 +689,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -592,7 +708,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_STATUS_CHANGED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					oldStatus: 'pending',
 					newStatus: 'done',
 					tag: 'master'
@@ -619,7 +744,16 @@ describe('IntegrationManager', () => {
 				EVENT_TYPES.TASK_CREATED,
 				{
 					taskId: 'task-123',
-					task: { id: 'task-123' },
+					task: {
+						id: 'task-123',
+						title: 'Test Task',
+						description: 'Test task description',
+						details: 'Test task details',
+						status: 'pending',
+						priority: 'medium',
+						dependencies: [],
+						subtasks: []
+					},
 					tag: 'master'
 				},
 				mockContext
@@ -703,7 +837,16 @@ describe('IntegrationManager', () => {
 					EVENT_TYPES.TASK_CREATED,
 					{
 						taskId: 'task-123',
-						task: { id: 'task-123' },
+						task: {
+							id: 'task-123',
+							title: 'Test Task',
+							description: 'Test task description',
+							details: 'Test task details',
+							status: 'pending',
+							priority: 'medium',
+							dependencies: [],
+							subtasks: []
+						},
 						tag: 'master'
 					},
 					mockContext

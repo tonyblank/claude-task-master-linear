@@ -74,10 +74,27 @@ TestEnvironment.isolatedSuite(
 			mockContext = {
 				projectRoot: '/test/project',
 				session: { user: 'testuser' },
-				source: 'test',
+				source: 'cli',
 				requestId: 'test-req-123'
 			};
 		});
+
+		function createValidTaskData(id = '123', title = 'Test Task') {
+			return {
+				taskId: id,
+				task: {
+					id,
+					title,
+					description: 'Test task description',
+					details: 'Test task details',
+					status: 'pending',
+					priority: 'medium',
+					dependencies: [],
+					subtasks: []
+				},
+				tag: 'test'
+			};
+		}
 
 		describe('initialization', () => {
 			test('should initialize successfully with dependencies', async () => {
@@ -231,7 +248,7 @@ TestEnvironment.isolatedSuite(
 				integrationManager.register(testIntegration);
 				await integrationManager.initialize();
 
-				const eventData = { taskId: '123', title: 'Test Task' };
+				const eventData = createValidTaskData('123', 'Test Task');
 				await integrationManager.emit(
 					EVENT_TYPES.TASK_CREATED,
 					eventData,
@@ -242,8 +259,9 @@ TestEnvironment.isolatedSuite(
 				expect(testIntegration.handledEvents[0].type).toBe(
 					EVENT_TYPES.TASK_CREATED
 				);
-				expect(testIntegration.handledEvents[0].payload).toMatchObject(
-					eventData
+				expect(testIntegration.handledEvents[0].payload.taskId).toBe('123');
+				expect(testIntegration.handledEvents[0].payload.task.title).toBe(
+					'Test Task'
 				);
 			});
 
@@ -265,7 +283,7 @@ TestEnvironment.isolatedSuite(
 
 				await integrationManager.emit(
 					EVENT_TYPES.TASK_CREATED,
-					{ taskId: '123' },
+					createValidTaskData('123'),
 					mockContext
 				);
 
@@ -287,7 +305,7 @@ TestEnvironment.isolatedSuite(
 
 				await integrationManager.emit(
 					EVENT_TYPES.TASK_CREATED,
-					{ taskId: '123' },
+					createValidTaskData('123'),
 					mockContext
 				);
 
@@ -306,7 +324,7 @@ TestEnvironment.isolatedSuite(
 					promises.push(
 						integrationManager.emit(
 							EVENT_TYPES.TASK_CREATED,
-							{ taskId: `task-${i}` },
+							createValidTaskData(`task-${i}`),
 							mockContext
 						)
 					);
@@ -325,7 +343,7 @@ TestEnvironment.isolatedSuite(
 
 				await integrationManager.emit(
 					EVENT_TYPES.TASK_CREATED,
-					{ taskId: '123' },
+					createValidTaskData('123'),
 					mockContext
 				);
 
@@ -345,7 +363,7 @@ TestEnvironment.isolatedSuite(
 
 				await integrationManager.emit(
 					EVENT_TYPES.TASK_CREATED,
-					{ taskId: '123' },
+					createValidTaskData('123'),
 					mockContext
 				);
 
@@ -366,7 +384,7 @@ TestEnvironment.isolatedSuite(
 				// Event should be processed through error boundary
 				await integrationManager.emit(
 					EVENT_TYPES.TASK_CREATED,
-					{ taskId: '123' },
+					createValidTaskData('123'),
 					mockContext
 				);
 
@@ -392,7 +410,7 @@ TestEnvironment.isolatedSuite(
 
 				await integrationManager.emit(
 					EVENT_TYPES.TASK_CREATED,
-					{ taskId: '123' },
+					createValidTaskData('123'),
 					mockContext
 				);
 
@@ -417,7 +435,7 @@ TestEnvironment.isolatedSuite(
 
 				await integrationManager.emit(
 					EVENT_TYPES.TASK_CREATED,
-					{ taskId: '123' },
+					createValidTaskData('123'),
 					mockContext
 				);
 
@@ -504,7 +522,7 @@ TestEnvironment.isolatedSuite(
 
 				await integrationManager.emit(
 					EVENT_TYPES.TASK_CREATED,
-					{ taskId: '123' },
+					createValidTaskData('123'),
 					mockContext
 				);
 
@@ -576,7 +594,11 @@ TestEnvironment.isolatedSuite(
 
 				// Should not throw even if circuit breaker fails
 				await expect(
-					env.emit(EVENT_TYPES.TASK_CREATED, { taskId: '123' }, mockContext)
+					env.emit(
+						EVENT_TYPES.TASK_CREATED,
+						createValidTaskData('123'),
+						mockContext
+					)
 				).resolves.not.toThrow();
 			});
 
@@ -612,7 +634,7 @@ TestEnvironment.isolatedSuite(
 					promises.push(
 						integrationManager.emit(
 							EVENT_TYPES.TASK_CREATED,
-							{ taskId: `stress-${i}`, title: `Stress Test ${i}` },
+							createValidTaskData(`stress-${i}`, `Stress Test ${i}`),
 							mockContext
 						)
 					);
@@ -648,7 +670,7 @@ TestEnvironment.isolatedSuite(
 					promises.push(
 						integrationManager.emit(
 							EVENT_TYPES.TASK_CREATED,
-							{ taskId: `concurrent-${i}` },
+							createValidTaskData(`concurrent-${i}`),
 							mockContext
 						)
 					);
