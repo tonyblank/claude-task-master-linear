@@ -11,6 +11,21 @@ import { EVENT_TYPES } from '../events/types.js';
 import { log } from '../utils.js';
 
 /**
+ * Escapes HTML characters to prevent XSS
+ * @param {string} text - Text to escape
+ * @returns {string} Escaped text
+ */
+function escapeHtml(text) {
+	if (typeof text !== 'string') return text;
+	return text
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#39;');
+}
+
+/**
  * Linear integration handler for TaskMaster events
  */
 export class LinearIntegrationHandler extends BaseIntegrationHandler {
@@ -241,23 +256,26 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	 * @private
 	 */
 	_formatTaskDescription(task) {
-		let description = `**TaskMaster Task #${task.id}**\n\n`;
-		description += `${task.description}\n\n`;
+		let description = `**TaskMaster Task #${escapeHtml(task.id)}**\n\n`;
+		description += `${escapeHtml(task.description)}\n\n`;
 
 		if (task.details) {
-			description += `**Implementation Details:**\n${task.details}\n\n`;
+			description += `**Implementation Details:**\n${escapeHtml(task.details)}\n\n`;
 		}
 
 		if (task.testStrategy) {
-			description += `**Test Strategy:**\n${task.testStrategy}\n\n`;
+			description += `**Test Strategy:**\n${escapeHtml(task.testStrategy)}\n\n`;
 		}
 
 		if (task.dependencies && task.dependencies.length > 0) {
-			description += `**Dependencies:** Tasks ${task.dependencies.join(', ')}\n\n`;
+			const escapedDeps = task.dependencies
+				.map((dep) => escapeHtml(dep))
+				.join(', ');
+			description += `**Dependencies:** Tasks ${escapedDeps}\n\n`;
 		}
 
-		description += `**Priority:** ${task.priority}\n`;
-		description += `**Status:** ${task.status}\n`;
+		description += `**Priority:** ${escapeHtml(task.priority)}\n`;
+		description += `**Status:** ${escapeHtml(task.status)}\n`;
 
 		return description;
 	}

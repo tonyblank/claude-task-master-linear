@@ -12,6 +12,7 @@ RUN npm ci --omit=dev
 
 # Copy remaining application files (excluding already copied files)
 COPY scripts/ ./scripts/
+COPY src/ ./src/
 COPY tests/ ./tests/
 COPY docs/ ./docs/
 COPY assets/ ./assets/

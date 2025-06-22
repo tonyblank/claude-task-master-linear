@@ -483,8 +483,8 @@ export class TestEnvironment {
 	static teardown() {
 		// Clean up globals if they exist
 		if (typeof global !== 'undefined') {
-			delete global.testFactories;
-			delete global.mockServiceRegistry;
+			global.testFactories = undefined;
+			global.mockServiceRegistry = undefined;
 		}
 	}
 

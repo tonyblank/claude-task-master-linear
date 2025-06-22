@@ -45,8 +45,8 @@ describe('Event System Integration Tests', () => {
 			const { integrationManager } = testEnv;
 
 			// Create test integration handlers with call tracking
-			let handler1Calls = [];
-			let handler2Calls = [];
+			const handler1Calls = [];
+			const handler2Calls = [];
 
 			const handler1 = TestFactories.createTestIntegrationHandler(
 				'test-handler-1',
@@ -136,9 +136,9 @@ describe('Event System Integration Tests', () => {
 			const { integrationManager } = testEnv;
 
 			// Track calls manually instead of using jest mock functions
-			let createdCalls = [];
-			let updatedCalls = [];
-			let statusChangedCalls = [];
+			const createdCalls = [];
+			const updatedCalls = [];
+			const statusChangedCalls = [];
 
 			const multiHandler = TestFactories.createTestIntegrationHandler(
 				'multi-handler',
@@ -222,8 +222,8 @@ describe('Event System Integration Tests', () => {
 			const { integrationManager } = testEnv;
 
 			// Track handler calls manually
-			let stableHandlerCalls = [];
-			let failingHandlerCalls = [];
+			const stableHandlerCalls = [];
+			const failingHandlerCalls = [];
 
 			// Create handlers with different failure scenarios
 			const stableHandler = TestFactories.createTestIntegrationHandler(
@@ -300,10 +300,10 @@ describe('Event System Integration Tests', () => {
 			const { integrationManager, dependencies } = testEnv;
 
 			// Track circuit breaker calls manually
-			let isOpenCalls = [];
-			let executeCalls = [];
-			let recordSuccessCalls = [];
-			let recordFailureCalls = [];
+			const isOpenCalls = [];
+			const executeCalls = [];
+			const recordSuccessCalls = [];
+			const recordFailureCalls = [];
 
 			// Mock circuit breaker behavior
 			const mockCircuitBreaker = {
@@ -325,7 +325,7 @@ describe('Event System Integration Tests', () => {
 			};
 
 			// Mock the circuit breaker registry call tracking
-			let getBreakerCalls = [];
+			const getBreakerCalls = [];
 			dependencies.circuitBreakerRegistry.getBreaker = (name) => {
 				getBreakerCalls.push(name);
 				return mockCircuitBreaker;
@@ -379,7 +379,7 @@ describe('Event System Integration Tests', () => {
 			const { integrationManager, dependencies } = testEnv;
 
 			// Track recovery manager calls manually
-			let executeWithRecoveryCalls = [];
+			const executeWithRecoveryCalls = [];
 
 			// Mock recovery manager to track calls
 			const originalExecuteWithRecovery =
@@ -458,7 +458,7 @@ describe('Event System Integration Tests', () => {
 			const { integrationManager, dependencies } = testEnv;
 
 			// Track health monitor calls manually
-			let registerCheckCalls = [];
+			const registerCheckCalls = [];
 			dependencies.healthMonitor.registerCheck = (name, checkFn) => {
 				registerCheckCalls.push({ name, checkFn });
 			};
@@ -484,7 +484,7 @@ describe('Event System Integration Tests', () => {
 			const { integrationManager, dependencies } = testEnv;
 
 			// Track health monitor calls manually and store check functions
-			let registerCheckCalls = [];
+			const registerCheckCalls = [];
 			dependencies.healthMonitor._checks = {};
 			dependencies.healthMonitor.registerCheck = (name, checkFn) => {
 				registerCheckCalls.push({ name, checkFn });
@@ -493,7 +493,7 @@ describe('Event System Integration Tests', () => {
 			};
 
 			// Track getStatus calls manually
-			let getStatusCalls = [];
+			const getStatusCalls = [];
 			const unhealthyHandler =
 				TestFactories.createTestIntegrationHandler('unhealthy-handler');
 			unhealthyHandler.getStatus = () => {
@@ -548,7 +548,7 @@ describe('Event System Integration Tests', () => {
 			const { integrationManager } = testEnv;
 
 			// Track handler calls manually
-			let handlerCalls = [];
+			const handlerCalls = [];
 			const validatingHandler = TestFactories.createTestIntegrationHandler(
 				'validating-handler',
 				{
@@ -641,7 +641,7 @@ describe('Event System Integration Tests', () => {
 		it('should handle concurrent events without interference', async () => {
 			const { integrationManager } = testEnv;
 
-			let processedEvents = [];
+			const processedEvents = [];
 			const concurrentHandler = TestFactories.createTestIntegrationHandler(
 				'concurrent-handler',
 				{
@@ -767,8 +767,8 @@ describe('Event System Integration Tests', () => {
 			const { integrationManager } = testEnv;
 
 			// Track shutdown calls manually
-			let handler1ShutdownCalls = [];
-			let handler2ShutdownCalls = [];
+			const handler1ShutdownCalls = [];
+			const handler2ShutdownCalls = [];
 
 			const handler1 =
 				TestFactories.createTestIntegrationHandler('shutdown-handler-1');
@@ -798,8 +798,8 @@ describe('Event System Integration Tests', () => {
 			const { integrationManager } = testEnv;
 
 			// Track shutdown calls manually
-			let problematicShutdownCalls = [];
-			let normalShutdownCalls = [];
+			const problematicShutdownCalls = [];
+			const normalShutdownCalls = [];
 
 			const problematicHandler = TestFactories.createTestIntegrationHandler(
 				'problematic-handler'

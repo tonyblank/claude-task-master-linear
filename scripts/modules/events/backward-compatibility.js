@@ -231,8 +231,8 @@ function extractEventSpecificData(eventType, eventData) {
 	const extracted = { ...eventData };
 
 	// Remove standard fields that are now top-level
-	delete extracted.timestamp;
-	delete extracted.context;
+	extracted.timestamp = undefined;
+	extracted.context = undefined;
 
 	// Apply event-type specific transformations
 	switch (eventType) {
@@ -350,7 +350,7 @@ export function createLegacyCompatiblePayload(
 	targetVersion = LEGACY_VERSIONS['0.1.0']
 ) {
 	switch (targetVersion) {
-		case LEGACY_VERSIONS['0.1.0']:
+		case LEGACY_VERSIONS['0.1.0']: {
 			// Convert back to wrapped format for pre-schema integrations
 			const { version, eventId, timestamp, context, ...eventData } = payload;
 
@@ -362,11 +362,13 @@ export function createLegacyCompatiblePayload(
 					context
 				}
 			};
+		}
 
-		case LEGACY_VERSIONS['0.9.0']:
+		case LEGACY_VERSIONS['0.9.0']: {
 			// Remove version field for beta compatibility
 			const { version: v, ...betaPayload } = payload;
 			return betaPayload;
+		}
 
 		default:
 			return payload;

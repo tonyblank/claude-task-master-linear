@@ -454,8 +454,9 @@ describe('EventQueue', () => {
 
 	describe('statistics and monitoring', () => {
 		test('should track comprehensive statistics', async () => {
-			const processor =
-				MockServiceRegistry.createMockFn().mockResolvedValue('result');
+			const processor = MockServiceRegistry.createMockFn().mockImplementation(
+				() => new Promise((resolve) => setTimeout(() => resolve('result'), 5))
+			);
 
 			await queue.push({ data: 'test1' }, { processor });
 			await queue.push({ data: 'test2' }, { processor });

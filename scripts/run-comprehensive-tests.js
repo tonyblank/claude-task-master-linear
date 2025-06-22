@@ -22,8 +22,8 @@ async function main() {
 
 		// Exit with appropriate code
 		const allPassed = Object.values(results)
-			.filter((r) => typeof r === 'object' && 'success' in r)
-			.every((r) => r.success);
+			.filter((r) => typeof r === 'object' && r !== null && 'success' in r)
+			.every((r) => r.success === true);
 
 		process.exit(allPassed ? 0 : 1);
 	} catch (error) {

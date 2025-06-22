@@ -31,6 +31,12 @@ export const HEALTH_CHECK_TYPE = {
 };
 
 /**
+ * Alert management constants
+ */
+const MAX_ALERTS = 100;
+const ALERTS_TO_KEEP = 50;
+
+/**
  * Comprehensive health monitoring for the integration system
  */
 export class HealthMonitor {
@@ -234,22 +240,37 @@ export class HealthMonitor {
 		}
 
 		// Check circuit breaker health
-		const circuitBreakerStatuses = circuitBreakerRegistry.getAllStatuses();
-		const unhealthyBreakers = Object.entries(circuitBreakerStatuses)
-			.filter(([name, status]) => !status.metrics.isHealthy)
-			.map(([name]) => name);
+		let circuitBreakerStatuses = {};
+		let unhealthyBreakers = [];
+		try {
+			circuitBreakerStatuses = circuitBreakerRegistry.getAllStatuses();
+			if (
+				circuitBreakerStatuses &&
+				typeof circuitBreakerStatuses === 'object'
+			) {
+				unhealthyBreakers = Object.entries(circuitBreakerStatuses)
+					.filter(
+						([name, status]) =>
+							status && status.metrics && !status.metrics.isHealthy
+					)
+					.map(([name]) => name);
 
-		if (unhealthyBreakers.length > 0) {
-			issues.push({
-				check: 'circuit_breakers',
-				issue: `Circuit breakers unhealthy: ${unhealthyBreakers.join(', ')}`,
-				severity: 'medium',
-				timestamp: Date.now()
-			});
+				if (unhealthyBreakers.length > 0) {
+					issues.push({
+						check: 'circuit_breakers',
+						issue: `Circuit breakers unhealthy: ${unhealthyBreakers.join(', ')}`,
+						severity: 'medium',
+						timestamp: Date.now()
+					});
 
-			if (overallStatus === HEALTH_STATUS.HEALTHY) {
-				overallStatus = HEALTH_STATUS.DEGRADED;
+					if (overallStatus === HEALTH_STATUS.HEALTHY) {
+						overallStatus = HEALTH_STATUS.DEGRADED;
+					}
+				}
 			}
+		} catch (error) {
+			// Handle circuit breaker registry errors gracefully
+			log('warn', 'Failed to check circuit breaker health:', error);
 		}
 
 		// Update cached result
@@ -265,7 +286,7 @@ export class HealthMonitor {
 				circuitBreakers: {
 					total: Object.keys(circuitBreakerStatuses).length,
 					healthy: Object.values(circuitBreakerStatuses).filter(
-						(s) => s.metrics.isHealthy
+						(s) => s && s.metrics && s.metrics.isHealthy
 					).length,
 					unhealthy: unhealthyBreakers.length
 				}
@@ -630,7 +651,7 @@ export class HealthMonitor {
 		}
 
 		const alert = {
-			id: `alert_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+			id: `alert_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
 			check: check.name,
 			status: result.status,
 			message: result.message,
@@ -642,8 +663,8 @@ export class HealthMonitor {
 		this.alerts.push(alert);
 
 		// Keep only recent alerts
-		if (this.alerts.length > 100) {
-			this.alerts = this.alerts.slice(-50);
+		if (this.alerts.length > MAX_ALERTS) {
+			this.alerts = this.alerts.slice(-ALERTS_TO_KEEP);
 		}
 
 		log(

@@ -1336,7 +1336,7 @@ export class IntegrationManager {
 
 				// Wait before retry with short delays for testing
 				const baseDelay = this.config.retryDelay || 100; // Short delay for tests
-				const delay = Math.min(baseDelay * Math.pow(2, attempt), 1000);
+				const delay = Math.min(baseDelay * 2 ** attempt, 1000);
 				await new Promise((resolve) => this.timer.setTimeout(resolve, delay));
 			}
 		}

@@ -44,6 +44,9 @@ export class EventEmitter {
 
 		// Active deliveries for guaranteed delivery
 		this.activeDeliveries = new Set();
+
+		// Compiled pattern cache for performance
+		this.compiledPatterns = new Map();
 	}
 
 	/**
@@ -73,7 +76,7 @@ export class EventEmitter {
 			);
 		}
 
-		const listenerId = `${eventType}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+		const listenerId = `${eventType}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 
 		const listenerWrapper = {
 			id: listenerId,
@@ -209,7 +212,7 @@ export class EventEmitter {
 	 * @returns {Promise<Object>} Emission results
 	 */
 	async emit(eventType, data, options = {}) {
-		const emissionId = `emit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+		const emissionId = `emit_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 
 		const emissionOptions = {
 			guaranteed: false,
@@ -320,7 +323,11 @@ export class EventEmitter {
 		// Pattern matching
 		for (const [pattern, patternListeners] of this.listeners.entries()) {
 			if (pattern.includes('*') && pattern !== '*') {
-				const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+				let regex = this.compiledPatterns.get(pattern);
+				if (!regex) {
+					regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+					this.compiledPatterns.set(pattern, regex);
+				}
 				if (regex.test(eventType)) {
 					listeners.push(...patternListeners);
 				}
@@ -462,15 +469,20 @@ export class EventEmitter {
 		for (let attempt = 0; attempt <= maxRetries; attempt++) {
 			try {
 				// Execute with timeout
+				let timeoutId;
 				const result = await Promise.race([
 					wrapper.listener(data, { eventType, listenerId: wrapper.id }),
-					new Promise((_, reject) =>
-						setTimeout(
+					new Promise((_, reject) => {
+						timeoutId = setTimeout(
 							() => reject(new Error(`Listener timeout after ${timeout}ms`)),
 							timeout
-						)
-					)
+						);
+					})
 				]);
+
+				if (timeoutId) {
+					clearTimeout(timeoutId);
+				}
 
 				// Success
 				const executionTime = Date.now() - startTime;
@@ -637,8 +649,9 @@ export class EventEmitter {
 					`Retrying guaranteed delivery for emission ${emissionId} (attempt ${delivery.retries})`
 				);
 
+				// Retry without guaranteed delivery to avoid recursion
 				const result = await this.emit(delivery.eventType, delivery.data, {
-					guaranteed: true
+					guaranteed: false
 				});
 
 				if (result.success) {
@@ -670,6 +683,7 @@ export class EventEmitter {
 		this.listeners.clear();
 		this.deliveryTracking.clear();
 		this.activeDeliveries.clear();
+		this.compiledPatterns.clear();
 
 		this.stats = {
 			eventsEmitted: 0,

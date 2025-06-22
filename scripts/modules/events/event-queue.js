@@ -6,7 +6,6 @@
  */
 
 import { log } from '../utils.js';
-import { validateEventPayload } from './types.js';
 
 /**
  * Priority levels for queue items
@@ -734,8 +733,8 @@ export class EventQueue {
 	 * @private
 	 */
 	_shouldProcessItem(item) {
-		// Add any custom logic for when items should be processed
-		// For now, all items are processed
+		// Override this method in subclasses to implement custom filtering
+		// Default implementation processes all items
 		return true;
 	}
 

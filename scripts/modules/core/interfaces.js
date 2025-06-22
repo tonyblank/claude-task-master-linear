@@ -138,7 +138,12 @@ export function validateInterface(obj, interfaceDefinition, name = 'object') {
 	for (const [key, expectedType] of Object.entries(interfaceDefinition)) {
 		if (!(key in obj)) {
 			missing.push(key);
-		} else if (typeof obj[key] !== expectedType.name.toLowerCase()) {
+		} else if (expectedType === Function && typeof obj[key] !== 'function') {
+			missing.push(`${key} (expected function, got ${typeof obj[key]})`);
+		} else if (
+			expectedType !== Function &&
+			typeof obj[key] !== expectedType.name.toLowerCase()
+		) {
 			missing.push(
 				`${key} (expected ${expectedType.name.toLowerCase()}, got ${typeof obj[key]})`
 			);

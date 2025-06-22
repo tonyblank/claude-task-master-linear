@@ -200,7 +200,7 @@ export function validateEventPayload(eventType, payload) {
 	}
 
 	// Validate timestamp format
-	if (isNaN(Date.parse(payload.timestamp))) {
+	if (Number.isNaN(Date.parse(payload.timestamp))) {
 		return false;
 	}
 
@@ -216,6 +216,7 @@ export function validateEventPayload(eventType, payload) {
 		}
 	} catch (error) {
 		// Fallback to basic validation if schema system is not available
+		console.error('validateEventPayload schema validation error:', error);
 		return true;
 	}
 }
@@ -235,6 +236,11 @@ export function createEventPayload(eventType, data, context) {
 			payload: createStandardEventPayload(eventType, data, context)
 		};
 	} catch (error) {
+		// Log the error so we know what's happening
+		console.error(
+			'Failed to create standard payload, falling back to legacy:',
+			error
+		);
 		// Fallback to the original format for backward compatibility
 		return {
 			type: eventType,

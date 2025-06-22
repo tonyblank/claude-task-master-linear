@@ -375,12 +375,11 @@ export class BaseIntegrationHandler {
 
 		switch (config.backoffStrategy) {
 			case 'exponential':
-				delay = config.baseDelay * Math.pow(2, attempt - 1);
+				delay = config.baseDelay * 2 ** (attempt - 1);
 				break;
 			case 'linear':
 				delay = config.baseDelay * attempt;
 				break;
-			case 'fixed':
 			default:
 				delay = config.baseDelay;
 				break;
