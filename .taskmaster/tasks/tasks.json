@@ -100,7 +100,7 @@
         "dependencies": [
           2
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -108,7 +108,7 @@
             "description": "Create a comprehensive design document for the event-driven architecture, including event types, flow diagrams, and component interactions.",
             "dependencies": [],
             "details": "Define all possible event types (task creation, updates, deletions, etc.), create flow diagrams showing how events propagate through the system, document component responsibilities, and establish patterns for event consumption. Include considerations for async vs sync processing and scalability.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 2,
@@ -118,7 +118,7 @@
               1
             ],
             "details": "Implement a base class with core functionality including initialization, configuration management, lifecycle hooks, and integration with the event system. Define required interfaces and abstract methods that specific integrations must implement.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 3,
@@ -129,7 +129,7 @@
               2
             ],
             "details": "Implement event emitters, event bus, and subscription mechanisms. Ensure proper async handling with queuing capabilities. Include retry logic and delivery guarantees where appropriate. Design for performance under high event volume.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 4,
@@ -140,7 +140,7 @@
               3
             ],
             "details": "Create error boundaries around integration execution, implement isolation patterns, add logging and monitoring hooks, and design recovery mechanisms. Include circuit breaker patterns to prevent cascading failures.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 5,
@@ -150,7 +150,7 @@
               2
             ],
             "details": "Build a registry for integrations, implement activation/deactivation mechanisms, create configuration validation, and add discovery capabilities. Include versioning support and dependency management between integrations.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 6,
@@ -161,7 +161,7 @@
               5
             ],
             "details": "Modify the addTask command to emit appropriate events, create sample integrations that respond to these events, and demonstrate the full event flow. Document the implementation as a reference for other commands.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 7,
@@ -172,7 +172,7 @@
               3
             ],
             "details": "Create schemas for different event types, implement serialization/deserialization, add validation mechanisms, and ensure backward compatibility. Include documentation for payload formats and versioning strategy.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 8,
@@ -184,7 +184,7 @@
               7
             ],
             "details": "Create unit tests for individual components, integration tests for event flows, performance tests for high-volume scenarios, and failure mode tests. Include mocking utilities for testing integrations in isolation.",
-            "status": "pending"
+            "status": "done"
           }
         ]
       },
@@ -381,7 +381,7 @@
             "description": "Implement API calls to fetch workflow states from Linear, including pagination handling and error management",
             "dependencies": [],
             "details": "Create a service method to query Linear's GraphQL API for workflow states. Handle authentication, pagination for large result sets, and API rate limiting. Return structured data with state IDs, names, and types.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 2,
@@ -391,7 +391,7 @@
               1
             ],
             "details": "Develop a matching algorithm that handles variations in naming conventions (e.g., 'In Progress' vs 'in-progress' vs 'InProgress'). Include similarity scoring, case-insensitive matching, and common abbreviation handling.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 3,
@@ -402,7 +402,7 @@
               2
             ],
             "details": "Build an in-memory cache with TTL support to store state ID mappings. Include cache invalidation strategies and persistence options for frequently used mappings.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 4,
@@ -413,7 +413,7 @@
               3
             ],
             "details": "Implement a configuration file or database schema for custom mappings. Support regex patterns, exact matches, and priority ordering. Include validation and conflict resolution.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 5,
@@ -424,7 +424,7 @@
               4
             ],
             "details": "Add logic to handle missing states, circular dependencies, archived workflows, and team-specific configurations. Implement sensible defaults and user notifications for unmapped states.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 6,
@@ -438,7 +438,7 @@
               5
             ],
             "details": "Write unit tests for matching logic, integration tests for API queries, and end-to-end tests for complete workflow mapping scenarios. Include performance tests for caching and mock various Linear workflow configurations.",
-            "status": "pending"
+            "status": "done"
           }
         ]
       },
@@ -1788,11 +1788,98 @@
         ],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 27,
+        "title": "Implement Debug Mode for Linear Sync Operations",
+        "description": "Create a debug mode that provides detailed logging and diagnostic information for all Linear sync operations to help troubleshoot integration issues.",
+        "details": "Implement a debug flag (--debug or -d) for all Linear sync commands that enables verbose logging. Create a dedicated DebugLogger class that extends the existing logging system with methods for different verbosity levels (info, debug, trace). Log all API requests and responses with sensitive data redacted. Include timing information for performance analysis. Log state changes in the sync process with before/after snapshots. Implement colorized console output for different message types (errors in red, warnings in yellow, etc.). Create a log file option that saves all debug output to a timestamped file. Add context information to each log entry (command, operation type, task ID). Include system information in debug logs (Node version, OS, package versions). Implement a --trace flag for even more detailed logging including stack traces. Add option to export debug logs in JSON format for automated analysis. Ensure debug mode doesn't interfere with normal operation but provides maximum visibility into the sync process.",
+        "testStrategy": "Test debug mode with various sync operations (create, update, status change). Verify all API calls are properly logged with sensitive data redacted. Test performance impact of debug mode to ensure it doesn't significantly slow operations. Verify log files are created correctly with proper permissions. Test with both successful operations and error scenarios to ensure comprehensive logging. Validate JSON export format for machine readability. Test in different environments (Windows, Mac, Linux) to ensure consistent logging behavior. Have team members review debug output to confirm it provides useful troubleshooting information.",
+        "status": "pending",
+        "dependencies": [
+          3,
+          16,
+          20
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 28,
+        "title": "Create Debug Test Suite for Linear Integration",
+        "description": "Develop a comprehensive test suite specifically for debugging Linear integration issues, with test cases that simulate common failure scenarios and edge cases.",
+        "details": "Implement a dedicated debug test suite that complements the main testing infrastructure but focuses specifically on troubleshooting scenarios:\n\n1. Create a `LinearDebugTests` class with specialized test cases for common integration failure points:\n   - Authentication failures (invalid/expired API tokens)\n   - Network connectivity issues (timeouts, connection drops)\n   - Rate limiting scenarios\n   - Malformed API responses\n   - Concurrent operation conflicts\n   - Data synchronization edge cases\n\n2. Implement mock Linear API responses for each failure scenario:\n   - Create a `MockLinearErrorResponses` utility that returns realistic error payloads\n   - Include HTTP status codes (401, 403, 429, 500, etc.) with appropriate error messages\n   - Simulate partial success scenarios (some operations succeed, others fail)\n\n3. Create test fixtures that represent complex task hierarchies and sync states:\n   - Tasks with deep subtask nesting\n   - Tasks with conflicting status between local and remote\n   - Orphaned tasks (exist locally but not in Linear)\n   - Ghost tasks (exist in Linear but not locally)\n\n4. Implement timing and performance tests:\n   - Measure API call latency under different conditions\n   - Test bulk operations with varying payload sizes\n   - Simulate slow network conditions\n\n5. Add specific tests for the debug mode functionality:\n   - Verify debug logs contain expected diagnostic information\n   - Test log redaction of sensitive information\n   - Validate log file rotation and management\n\n6. Create a test harness that can be run in CI/CD but also manually invoked:\n   - Command: `npm run test:linear-debug`\n   - Allow targeting specific test scenarios via command line arguments\n   - Support running in verbose mode with full logging\n\n7. Document each test case with:\n   - Expected behavior\n   - Common failure patterns\n   - Troubleshooting steps for developers\n\n8. Implement a test report generator that creates detailed HTML reports of test runs with:\n   - API call sequences\n   - Request/response payloads (with sensitive data redacted)\n   - Timing information\n   - State changes",
+        "testStrategy": "1. Run the full debug test suite in isolation:\n   - Verify all test cases execute without errors\n   - Confirm test coverage of all identified failure scenarios\n   - Validate that tests properly clean up after themselves\n\n2. Test the debug mode integration:\n   - Run tests with debug flag enabled and verify enhanced logging\n   - Confirm sensitive data is properly redacted in logs\n   - Validate log file creation and content\n\n3. Verify error simulation accuracy:\n   - Compare simulated error responses with actual Linear API errors\n   - Adjust mock responses to match current Linear API behavior\n   - Test error handling code paths are properly exercised\n\n4. Conduct performance validation:\n   - Measure baseline performance metrics\n   - Test with artificially degraded conditions\n   - Verify timeout and retry mechanisms function correctly\n\n5. Validate test reporting:\n   - Generate test reports and verify content accuracy\n   - Check for proper formatting and readability\n   - Ensure diagnostic information is comprehensive\n\n6. Perform integration with main test suite:\n   - Run debug tests as part of the full test pipeline\n   - Verify no conflicts with other test modules\n   - Confirm CI/CD integration works correctly\n\n7. Manual verification:\n   - Have team members run debug tests on different environments\n   - Collect feedback on test coverage and usefulness\n   - Identify any missing failure scenarios",
+        "status": "pending",
+        "dependencies": [
+          20,
+          27,
+          16
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 29,
+        "title": "Refactor IntegrationManager Class for Improved Separation of Concerns",
+        "description": "Split the monolithic IntegrationManager class into focused components: EventEmitter, IntegrationRegistry, HandlerExecutor, MiddlewarePipeline, and EventBatcher to improve maintainability and extensibility.",
+        "details": "This refactoring will address the current complexity of the IntegrationManager class by breaking it down into specialized components:\n\n1. **Analysis Phase**:\n   - Review the current 1375+ line IntegrationManager class\n   - Document all responsibilities and dependencies\n   - Identify natural boundaries between concerns\n   - Create class diagrams for the new architecture\n\n2. **Component Design**:\n   - **EventEmitter**: Responsible for event registration, emission, and subscription\n     - Methods: `on(eventName, handler)`, `emit(eventName, data)`, `off(eventName, handler)`\n     - Support for synchronous and asynchronous event handling\n     - Implement proper error boundaries for event handlers\n   \n   - **IntegrationRegistry**: Manages integration registration and discovery\n     - Methods: `register(integration)`, `getIntegration(name)`, `listIntegrations()`, `isEnabled(name)`\n     - Validation of integration interfaces\n     - Support for enabling/disabling integrations\n   \n   - **HandlerExecutor**: Handles execution of integration callbacks with resilience patterns\n     - Implements retry logic with exponential backoff\n     - Circuit breaker pattern to prevent cascading failures\n     - Timeout handling for long-running operations\n     - Error isolation between handlers\n   \n   - **MiddlewarePipeline**: Processes events through configurable middleware chains\n     - Pre-processing and post-processing hooks\n     - Filtering and transformation capabilities\n     - Ability to short-circuit event propagation\n   \n   - **EventBatcher**: Handles batching of events for efficient processing\n     - Configurable batch sizes and timeouts\n     - Debouncing of rapidly firing events\n     - Priority-based processing\n\n3. **Implementation Strategy**:\n   - Create new classes with well-defined interfaces\n   - Implement a facade pattern to maintain backward compatibility\n   - Gradually migrate functionality from IntegrationManager to new components\n   - Update all references to use the new components\n   - Ensure proper dependency injection between components\n\n4. **Migration Approach**:\n   - Create new classes alongside existing IntegrationManager\n   - Implement one component at a time, starting with EventEmitter\n   - Update IntegrationManager to use new components internally\n   - Once all functionality is migrated, convert IntegrationManager to a facade\n\n5. **Documentation**:\n   - Update architecture documentation with new component diagrams\n   - Document interfaces for each component\n   - Provide migration guide for plugin developers\n   - Add code examples for common integration patterns",
+        "testStrategy": "The refactoring will be tested through a comprehensive approach:\n\n1. **Unit Tests for Each Component**:\n   - **EventEmitter**:\n     - Test event registration, emission, and subscription\n     - Verify error boundaries contain failures\n     - Test asynchronous event handling\n     - Measure performance with many subscribers\n   \n   - **IntegrationRegistry**:\n     - Test registration of valid and invalid integrations\n     - Verify retrieval and listing functionality\n     - Test enabling/disabling integrations\n   \n   - **HandlerExecutor**:\n     - Test retry logic with simulated failures\n     - Verify circuit breaker functionality\n     - Test timeout handling\n     - Measure performance under load\n   \n   - **MiddlewarePipeline**:\n     - Test middleware execution order\n     - Verify transformation capabilities\n     - Test short-circuit functionality\n   \n   - **EventBatcher**:\n     - Test batching with various configurations\n     - Verify debouncing functionality\n     - Test priority-based processing\n\n2. **Integration Tests**:\n   - Verify all components work together correctly\n   - Test with existing integrations (Linear, Git)\n   - Ensure backward compatibility with existing code\n\n3. **Regression Testing**:\n   - Run all existing tests to ensure no functionality is broken\n   - Test all commands that use the IntegrationManager\n   - Verify event emission and handling works identically\n\n4. **Performance Testing**:\n   - Compare performance before and after refactoring\n   - Test with large numbers of events and integrations\n   - Measure memory usage and execution time\n\n5. **Compatibility Testing**:\n   - Verify existing plugins continue to work\n   - Test with different Node.js versions\n   - Ensure configuration options are respected",
+        "status": "pending",
+        "dependencies": [
+          3,
+          19
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 30,
+        "title": "Refactor handleEvent Method in IntegrationManager",
+        "description": "Split the complex 230+ line handleEvent method into smaller, focused private methods to improve testability and maintainability.",
+        "details": "This task involves breaking down the monolithic handleEvent method in the IntegrationManager class into smaller, more focused methods with clear responsibilities:\n\n1. **Analysis Phase**:\n   - Review the current handleEvent method implementation\n   - Document the flow and responsibilities within the method\n   - Identify clear boundaries for extraction into separate methods\n   - Create a plan for refactoring that maintains the same behavior\n\n2. **Implementation Phase**:\n   - Extract the following private methods:\n     - `_validateEventForHandling()`: Responsible for validating event payload structure, required fields, and data types\n     - `_processMiddleware()`: Handles the execution of middleware functions in the correct order with proper error handling\n     - `_findAndExecuteHandlers()`: Locates appropriate event handlers, executes them with retry logic and circuit breaker patterns\n     - `_collectHandlerResults()`: Gathers results from all handlers, formats them consistently, and prepares the final response\n\n3. **Code Quality Improvements**:\n   - Add JSDoc comments to each new method explaining purpose, parameters, and return values\n   - Implement proper error handling in each extracted method\n   - Ensure consistent logging throughout the refactored methods\n   - Update any existing tests to work with the new structure\n\n4. **Considerations**:\n   - Maintain backward compatibility - the public API should not change\n   - Ensure the refactored code handles all edge cases from the original implementation\n   - Look for opportunities to improve error handling during the refactoring\n   - Consider adding additional unit tests for the new private methods\n   - Ensure the refactoring doesn't negatively impact performance",
+        "testStrategy": "The refactoring will be tested through a comprehensive approach:\n\n1. **Regression Testing**:\n   - Run all existing integration tests to ensure the refactored code maintains the same behavior\n   - Verify that all event types continue to be processed correctly\n   - Confirm that error handling works as expected for various failure scenarios\n\n2. **Unit Tests for New Methods**:\n   - Create dedicated unit tests for each extracted method:\n     - `_validateEventForHandling()`: Test with valid and invalid payloads\n     - `_processMiddleware()`: Test with various middleware configurations and error scenarios\n     - `_findAndExecuteHandlers()`: Test handler discovery, retry logic, and circuit breaker functionality\n     - `_collectHandlerResults()`: Test result aggregation with different handler outputs\n\n3. **Edge Case Testing**:\n   - Test with empty event payloads\n   - Test with malformed event data\n   - Test with missing handlers\n   - Test with failing middleware\n   - Test with handlers that timeout or throw exceptions\n\n4. **Performance Testing**:\n   - Compare performance metrics before and after refactoring\n   - Ensure the refactoring doesn't introduce significant overhead\n\n5. **Code Review**:\n   - Conduct a thorough code review to ensure the refactoring follows best practices\n   - Verify that all edge cases from the original implementation are handled",
+        "status": "pending",
+        "dependencies": [
+          29
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 31,
+        "title": "Refactor HealthMonitor Class Following SOLID Principles",
+        "description": "Split the monolithic 800+ line HealthMonitor class into focused components: HealthChecker, MetricsCollector, AlertManager, and a coordinating HealthMonitor class to improve maintainability.",
+        "details": "This task involves refactoring the HealthMonitor class to follow SOLID principles by breaking it down into specialized components:\n\n1. **Analysis Phase**:\n   - Review the current 800+ line HealthMonitor class implementation\n   - Document all responsibilities and dependencies\n   - Identify clear boundaries between health checks, metrics collection, and alerting\n   - Create class diagrams for the new architecture\n\n2. **Component Design**:\n   - **HealthChecker**: Responsible for running health checks\n     - Methods for registering health checks\n     - Executing individual and batch health checks\n     - Storing and retrieving health check results\n     - Supporting both synchronous and asynchronous health checks\n\n   - **MetricsCollector**: Responsible for metrics collection\n     - Methods for registering metrics\n     - Collecting metrics from various sources\n     - Processing and aggregating metrics\n     - Providing interfaces for metrics retrieval\n\n   - **AlertManager**: Responsible for alert management\n     - Alert rule configuration\n     - Alert triggering based on health checks and metrics\n     - Alert notification dispatch\n     - Alert status tracking and history\n\n   - **HealthMonitor**: Coordinates the above components\n     - Initializes and manages component lifecycle\n     - Provides a simplified facade for common operations\n     - Handles cross-cutting concerns like logging and error handling\n     - Maintains backward compatibility with existing API\n\n3. **Implementation Phase**:\n   - Create interface definitions for each component\n   - Implement each component with proper unit tests\n   - Refactor existing code to use the new components\n   - Update dependency injection to wire up the new components\n   - Ensure backward compatibility with existing API consumers\n\n4. **Documentation**:\n   - Update class documentation to reflect new architecture\n   - Create sequence diagrams for common operations\n   - Document migration path for code currently using HealthMonitor\n\n5. **Performance Considerations**:\n   - Ensure refactoring doesn't introduce performance regressions\n   - Consider caching strategies for health check results\n   - Optimize cross-component communication",
+        "testStrategy": "The refactoring will be tested through a comprehensive approach:\n\n1. **Unit Tests for Each Component**:\n   - **HealthChecker**:\n     - Test health check registration and execution\n     - Verify error handling during health checks\n     - Test asynchronous health check behavior\n     - Validate health check result storage and retrieval\n\n   - **MetricsCollector**:\n     - Test metrics registration and collection\n     - Verify metrics aggregation functions\n     - Test performance of metrics collection\n     - Validate metrics retrieval interfaces\n\n   - **AlertManager**:\n     - Test alert rule configuration\n     - Verify alert triggering based on conditions\n     - Test notification dispatch to various channels\n     - Validate alert history tracking\n\n   - **HealthMonitor**:\n     - Test coordination between components\n     - Verify backward compatibility with existing API\n     - Test error propagation and handling\n     - Validate lifecycle management\n\n2. **Integration Tests**:\n   - Test end-to-end scenarios using all components\n   - Verify system behavior matches pre-refactoring behavior\n   - Test boundary conditions and edge cases\n   - Validate performance characteristics\n\n3. **Regression Testing**:\n   - Run existing test suite against refactored code\n   - Compare performance metrics before and after refactoring\n   - Verify all existing functionality continues to work\n   - Ensure no new bugs are introduced\n\n4. **Code Quality Metrics**:\n   - Verify reduction in class size and complexity\n   - Confirm improved test coverage\n   - Validate adherence to SOLID principles\n   - Check for proper encapsulation and information hiding",
+        "status": "pending",
+        "dependencies": [
+          26,
+          29,
+          30
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 32,
+        "title": "Optimize EventQueue pushBatch Method for Performance",
+        "description": "Refactor the pushBatch method in EventQueue to improve performance when handling large batches of events by reducing redundant processing checks.",
+        "details": "This task involves optimizing the EventQueue's pushBatch method which currently has performance issues when handling large batches:\n\n1. **Analysis Phase**:\n   - Review the current implementation of pushBatch method which sequentially calls push() for each item\n   - Identify the performance bottlenecks, particularly the redundant processing checks triggered for each item\n   - Profile the current implementation with various batch sizes to establish a baseline\n\n2. **Implementation Phase**:\n   - Refactor the pushBatch method to use one of two approaches:\n     a. **Batch Processing Approach**: Modify the implementation to collect all items first, then process them as a single batch operation\n        ```typescript\n        // Current implementation (simplified)\n        pushBatch(events: Event[]): void {\n          for (const event of events) {\n            this.push(event); // Triggers processing checks for each item\n          }\n        }\n        \n        // Proposed batch implementation\n        pushBatch(events: Event[]): void {\n          if (events.length === 0) return;\n          \n          // Add all events to the queue at once\n          this.queue.push(...events);\n          \n          // Trigger processing check only once after all items are added\n          this.checkProcessing();\n        }\n        ```\n     \n     b. **Concurrent Processing Approach**: Use Promise.all to push items concurrently\n        ```typescript\n        // Concurrent implementation\n        async pushBatch(events: Event[]): Promise<void> {\n          if (events.length === 0) return;\n          \n          await Promise.all(events.map(event => {\n            // Add to queue without triggering processing\n            this.queue.push(event);\n            return Promise.resolve();\n          }));\n          \n          // Trigger processing check only once\n          this.checkProcessing();\n        }\n        ```\n\n3. **Optimization Considerations**:\n   - Ensure the optimized implementation maintains the same event ordering guarantees\n   - Add batch size thresholds to dynamically choose between sequential and batch processing based on batch size\n   - Consider implementing a chunking mechanism for extremely large batches to prevent memory issues\n   - Update any related documentation to reflect the new behavior\n   - Ensure backward compatibility with existing code that relies on pushBatch\n\n4. **Performance Monitoring**:\n   - Add performance metrics to measure the improvement (e.g., time to process batches of different sizes)\n   - Consider adding logging for large batch operations to aid in future performance analysis",
+        "testStrategy": "The optimization will be tested through a comprehensive approach:\n\n1. **Unit Tests**:\n   - Create unit tests with various batch sizes (small, medium, large) to verify correct behavior\n   - Test edge cases: empty batches, single-item batches, and very large batches (1000+ items)\n   - Verify that events are still processed in the correct order after optimization\n   - Test that event handlers are still called correctly for all events\n\n2. **Performance Testing**:\n   - Benchmark the optimized implementation against the original implementation\n   - Measure and compare:\n     - Total processing time for batches of 10, 100, 1000, and 10000 events\n     - Memory usage during batch processing\n     - CPU utilization during batch processing\n   - Create a performance test that simulates real-world usage patterns\n   - Verify performance improvements meet expectations (aim for at least 50% improvement for large batches)\n\n3. **Integration Testing**:\n   - Test the optimized EventQueue with actual components that depend on it\n   - Verify that all dependent systems continue to function correctly\n   - Test with realistic event payloads from production scenarios\n\n4. **Regression Testing**:\n   - Run the existing test suite to ensure no regressions were introduced\n   - Verify that all event processing logic continues to work as expected\n\n5. **Documentation Verification**:\n   - Ensure any API documentation is updated to reflect changes in behavior or performance characteristics",
+        "status": "pending",
+        "dependencies": [
+          18,
+          29,
+          31
+        ],
+        "priority": "low",
+        "subtasks": []
       }
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-19T14:41:30.517Z",
+      "updated": "2025-06-22T01:14:44.976Z",
       "description": "Tasks for master context"
     }
   }

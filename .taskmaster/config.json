@@ -3,11 +3,14 @@
 		"main": {
 			"provider": "anthropic",
 			"modelId": "claude-3-7-sonnet-20250219",
-			"maxTokens": 120000
+			"maxTokens": 120000,
+			"temperature": 0.2
 		},
 		"research": {
 			"provider": "openai",
-			"modelId": "gpt-4"
+			"modelId": "gpt-4",
+			"maxTokens": 8700,
+			"temperature": 0.1
 		},
 		"fallback": {
 			"provider": "anthropic",
@@ -18,7 +21,13 @@
 	},
 	"global": {
 		"logLevel": "info",
-		"debug": false
+		"debug": false,
+		"defaultSubtasks": 5,
+		"defaultPriority": "medium",
+		"projectName": "Task Master",
+		"ollamaBaseURL": "${OLLAMA_BASE_URL:-http://localhost:11434/api}",
+		"bedrockBaseURL": "${BEDROCK_BASE_URL:-https://bedrock.us-east-1.amazonaws.com}",
+		"userId": "${USER_ID}"
 	},
 	"integrations": {
 		"linear": {
