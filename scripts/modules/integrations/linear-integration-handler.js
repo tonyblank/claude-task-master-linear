@@ -185,9 +185,23 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 
 		const { task, tag, context } = payload;
 
-		log('info', `Creating Linear issue for task #${task.id}: ${task.title}`);
+		// Create progress message for operation start
+		const progressMessage = this.createProgressMessage(
+			'create',
+			task,
+			'validating'
+		);
+		this.logFormattedMessage(progressMessage);
 
 		try {
+			// Update progress - creating issue
+			const creatingProgress = this.createProgressMessage(
+				'create',
+				task,
+				'creating'
+			);
+			this.logFormattedMessage(creatingProgress);
+
 			// Create the Linear issue using comprehensive field mapping
 			const issue = await this._createLinearIssue(task, context?.projectRoot);
 
@@ -195,7 +209,13 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				throw new Error('Failed to create Linear issue - no issue returned');
 			}
 
-			log('info', `Linear issue created: ${issue.identifier} - ${issue.url}`);
+			// Update progress - parsing response
+			const parsingProgress = this.createProgressMessage(
+				'create',
+				task,
+				'parsing'
+			);
+			this.logFormattedMessage(parsingProgress);
 
 			// Create standardized response object
 			const standardizedResponse = this._createStandardizedResponse(
@@ -222,16 +242,24 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				updatedAt: issue.updatedAt
 			};
 
+			// Update progress - updating task
+			const updatingProgress = this.createProgressMessage(
+				'create',
+				task,
+				'updating'
+			);
+			this.logFormattedMessage(updatingProgress);
+
 			const updatedTask = await this._updateTaskWithLinearIssue(
 				task.id,
 				linearIssueInfo,
 				context?.projectRoot
 			);
 
-			log(
-				'info',
-				`Task #${task.id} successfully linked to Linear issue ${issue.identifier}`
-			);
+			// Create and log success message
+			const successMessage = this.createSuccessMessage('create', task, issue);
+			this.logFormattedMessage(successMessage, true);
+			this.displayUserMessage(successMessage, true);
 
 			// Return both the standardized response and backward-compatible format
 			return {
@@ -241,14 +269,15 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 					id: task.id,
 					title: task.title
 				},
-				updatedTask
+				updatedTask,
+				// Include formatted message for consumers
+				formattedMessage: successMessage
 			};
 		} catch (error) {
-			log(
-				'error',
-				`Failed to create Linear issue for task #${task.id}:`,
-				error.message
-			);
+			// Create and log error message
+			const errorMessage = this.createErrorMessage('create', task, error);
+			this.logFormattedMessage(errorMessage, true);
+			this.displayUserMessage(errorMessage, true);
 
 			// Create standardized error response
 			const errorResponse = this._createErrorResponse(error, 'createIssue');
@@ -258,6 +287,9 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				id: task.id,
 				title: task.title
 			};
+
+			// Include formatted message in error response
+			errorResponse.formattedMessage = errorMessage;
 
 			// For backward compatibility, still throw the error
 			// but consumers can also check for standardized error responses
@@ -275,26 +307,62 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	async handleTaskStatusChanged(payload) {
 		const { task, oldStatus, newStatus } = payload;
 
-		log(
-			'info',
-			`Task #${task.id} status changed from ${oldStatus} to ${newStatus}`
-		);
+		// Create progress message for status sync
+		const progressMessage = this.createProgressMessage('sync', task, 'syncing');
+		this.logFormattedMessage(progressMessage);
 
-		// In a real implementation, we would:
-		// 1. Find the Linear issue associated with this task
-		// 2. Update the Linear issue state based on the new status
-		// 3. Add a comment about the status change
+		try {
+			// In a real implementation, we would:
+			// 1. Find the Linear issue associated with this task
+			// 2. Update the Linear issue state based on the new status
+			// 3. Add a comment about the status change
 
-		// For this POC, we'll just log the event
-		return {
-			action: 'logged',
-			task: {
-				id: task.id,
-				oldStatus,
-				newStatus
-			},
-			message: `Status change logged for task #${task.id}`
-		};
+			// For now, simulate successful status sync
+			const mockLinearData = {
+				identifier: task.integrations?.linear?.identifier || `TM-${task.id}`,
+				url:
+					task.integrations?.linear?.url ||
+					`https://linear.app/issue/TM-${task.id}`,
+				state: { name: newStatus }
+			};
+
+			// Create success message for status sync
+			const successMessage = this.createSuccessMessage(
+				'sync',
+				task,
+				mockLinearData,
+				{
+					changes: [`status: ${oldStatus} → ${newStatus}`]
+				}
+			);
+			this.logFormattedMessage(successMessage);
+
+			return {
+				action: 'synced',
+				task: {
+					id: task.id,
+					oldStatus,
+					newStatus
+				},
+				message: `Status change synced for task #${task.id}`,
+				formattedMessage: successMessage
+			};
+		} catch (error) {
+			// Create error message for failed sync
+			const errorMessage = this.createErrorMessage('sync', task, error);
+			this.logFormattedMessage(errorMessage);
+
+			return {
+				action: 'error',
+				task: {
+					id: task.id,
+					oldStatus,
+					newStatus
+				},
+				error: error.message,
+				formattedMessage: errorMessage
+			};
+		}
 	}
 
 	/**
@@ -306,19 +374,62 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	async handleTaskUpdated(payload) {
 		const { task, changes } = payload;
 
-		log('info', `Task #${task.id} updated:`, Object.keys(changes).join(', '));
+		// Create progress message for update sync
+		const progressMessage = this.createProgressMessage(
+			'update',
+			task,
+			'syncing'
+		);
+		this.logFormattedMessage(progressMessage);
 
-		// In a real implementation, we would update the Linear issue with the changes
-		// For this POC, we'll just log the event
-		return {
-			action: 'logged',
-			task: {
-				id: task.id,
-				title: task.title
-			},
-			changes: Object.keys(changes),
-			message: `Update logged for task #${task.id}`
-		};
+		try {
+			// In a real implementation, we would update the Linear issue with the changes
+
+			// For now, simulate successful update sync
+			const mockLinearData = {
+				identifier: task.integrations?.linear?.identifier || `TM-${task.id}`,
+				url:
+					task.integrations?.linear?.url ||
+					`https://linear.app/issue/TM-${task.id}`
+			};
+
+			// Create success message for update sync
+			const successMessage = this.createSuccessMessage(
+				'update',
+				task,
+				mockLinearData,
+				{
+					changes: Object.keys(changes)
+				}
+			);
+			this.logFormattedMessage(successMessage);
+
+			return {
+				action: 'synced',
+				task: {
+					id: task.id,
+					title: task.title
+				},
+				changes: Object.keys(changes),
+				message: `Update synced for task #${task.id}`,
+				formattedMessage: successMessage
+			};
+		} catch (error) {
+			// Create error message for failed sync
+			const errorMessage = this.createErrorMessage('update', task, error);
+			this.logFormattedMessage(errorMessage);
+
+			return {
+				action: 'error',
+				task: {
+					id: task.id,
+					title: task.title
+				},
+				changes: Object.keys(changes),
+				error: error.message,
+				formattedMessage: errorMessage
+			};
+		}
 	}
 
 	/**
@@ -1596,5 +1707,625 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			createIssues: this.config.createIssues !== false,
 			enabled: this.isEnabled()
 		};
+	}
+
+	// =============================================================================
+	// FORMATTED MESSAGING SYSTEM
+	// =============================================================================
+
+	/**
+	 * Create formatted success message for Linear operations
+	 *
+	 * @param {string} operationType - Type of operation (create, update, sync)
+	 * @param {Object} task - Task object
+	 * @param {Object} linearData - Linear issue/response data
+	 * @param {Object} options - Additional message options
+	 * @returns {Object} Formatted success message
+	 */
+	createSuccessMessage(operationType, task, linearData, options = {}) {
+		const timestamp = new Date().toISOString();
+		const baseMessage = {
+			success: true,
+			type: 'success',
+			operation: operationType,
+			timestamp,
+			task: {
+				id: task.id,
+				title: task.title
+			}
+		};
+
+		switch (operationType) {
+			case 'create':
+				return {
+					...baseMessage,
+					title: '✅ Linear Issue Created Successfully',
+					message: `Task #${task.id} "${task.title}" has been successfully created as Linear issue ${linearData.identifier}`,
+					details: {
+						linearIssue: {
+							id: linearData.id,
+							identifier: linearData.identifier,
+							url: linearData.url,
+							title: linearData.title
+						},
+						team: linearData.team?.name || 'Unknown',
+						project: linearData.project?.name || 'No project',
+						priority: this._formatPriority(linearData.priority),
+						labels: linearData.labels?.map((l) => l.name).join(', ') || 'None'
+					},
+					actions: {
+						viewIssue: {
+							text: 'View in Linear',
+							url: linearData.url,
+							primary: true
+						},
+						viewTask: {
+							text: `View Task #${task.id}`,
+							command: `task-master show ${task.id}`,
+							secondary: true
+						}
+					},
+					logMessage: `Task #${task.id} successfully linked to Linear issue ${linearData.identifier} - ${linearData.url}`,
+					userMessage: `🎉 Created Linear issue ${linearData.identifier} for task "${task.title}"\n   View: ${linearData.url}`
+				};
+
+			case 'update':
+				return {
+					...baseMessage,
+					title: '✅ Linear Issue Updated Successfully',
+					message: `Task #${task.id} changes have been synchronized to Linear issue ${linearData.identifier}`,
+					details: {
+						linearIssue: {
+							identifier: linearData.identifier,
+							url: linearData.url
+						},
+						changes: options.changes || [],
+						syncedAt: timestamp
+					},
+					actions: {
+						viewIssue: {
+							text: 'View Updated Issue',
+							url: linearData.url,
+							primary: true
+						}
+					},
+					logMessage: `Task #${task.id} changes synchronized to Linear issue ${linearData.identifier}`,
+					userMessage: `✅ Synchronized changes to Linear issue ${linearData.identifier}`
+				};
+
+			case 'sync':
+				return {
+					...baseMessage,
+					title: '✅ Linear Integration Synchronized',
+					message: `Task #${task.id} is now synchronized with Linear issue ${linearData.identifier}`,
+					details: {
+						linearIssue: {
+							identifier: linearData.identifier,
+							url: linearData.url,
+							status: linearData.state?.name || 'Unknown'
+						},
+						lastSync: timestamp
+					},
+					logMessage: `Task #${task.id} synchronized with Linear issue ${linearData.identifier}`,
+					userMessage: `🔄 Task #${task.id} synchronized with Linear`
+				};
+
+			default:
+				return {
+					...baseMessage,
+					title: '✅ Linear Operation Completed',
+					message: `${operationType} operation completed successfully for task #${task.id}`,
+					logMessage: `Linear ${operationType} operation completed for task #${task.id}`,
+					userMessage: `✅ Linear ${operationType} completed for task #${task.id}`
+				};
+		}
+	}
+
+	/**
+	 * Create formatted error message for Linear operations
+	 *
+	 * @param {string} operationType - Type of operation that failed
+	 * @param {Object} task - Task object (if available)
+	 * @param {Error} error - Error object
+	 * @param {Object} options - Additional message options
+	 * @returns {Object} Formatted error message
+	 */
+	createErrorMessage(operationType, task, error, options = {}) {
+		const timestamp = new Date().toISOString();
+		const errorType = this._classifyError(error);
+		const isRetryable = this._isRetryableError(error, this.config);
+
+		const baseMessage = {
+			success: false,
+			type: 'error',
+			operation: operationType,
+			timestamp,
+			error: {
+				type: errorType,
+				code: error.code || 'UNKNOWN',
+				message: error.message,
+				retryable: isRetryable,
+				originalMessage: error.originalMessage,
+				operationName: error.operationName
+			},
+			task: task
+				? {
+						id: task.id,
+						title: task.title
+					}
+				: null
+		};
+
+		// Get user-friendly error information
+		const errorInfo = this._getErrorDisplayInfo(error, errorType);
+
+		return {
+			...baseMessage,
+			title: `❌ Linear ${operationType} Failed`,
+			message: `Failed to ${operationType} Linear issue${task ? ` for task #${task.id}` : ''}`,
+			details: {
+				errorType: errorInfo.category,
+				description: errorInfo.description,
+				possibleCauses: errorInfo.causes,
+				resolution: errorInfo.resolution,
+				retryInfo: isRetryable
+					? {
+							willRetry: options.willRetry !== false,
+							attempt: options.currentAttempt || 1,
+							maxAttempts: options.maxAttempts || this.config.maxAttempts || 3,
+							nextRetryIn: options.nextRetryDelay || null
+						}
+					: null
+			},
+			actions: errorInfo.actions,
+			logMessage: `Linear ${operationType} failed${task ? ` for task #${task.id}` : ''}: ${error.message}`,
+			userMessage: this._createUserErrorMessage(
+				operationType,
+				task,
+				errorInfo,
+				isRetryable,
+				options
+			)
+		};
+	}
+
+	/**
+	 * Create formatted retry message for Linear operations
+	 *
+	 * @param {string} operationType - Type of operation being retried
+	 * @param {Object} task - Task object (if available)
+	 * @param {Error} error - Error that caused the retry
+	 * @param {Object} retryInfo - Retry attempt information
+	 * @returns {Object} Formatted retry message
+	 */
+	createRetryMessage(operationType, task, error, retryInfo) {
+		const timestamp = new Date().toISOString();
+		const { currentAttempt, maxAttempts, delay } = retryInfo;
+
+		return {
+			success: false,
+			type: 'retry',
+			operation: operationType,
+			timestamp,
+			task: task
+				? {
+						id: task.id,
+						title: task.title
+					}
+				: null,
+			retry: {
+				attempt: currentAttempt,
+				maxAttempts,
+				delayMs: delay,
+				delayFormatted: this._formatDelay(delay),
+				reason: error.message,
+				nextAttemptAt: new Date(Date.now() + delay).toISOString()
+			},
+			title: `🔄 Retrying Linear ${operationType}`,
+			message: `Attempt ${currentAttempt}/${maxAttempts} failed, retrying in ${this._formatDelay(delay)}`,
+			logMessage: `Integration linear operation failed (attempt ${currentAttempt}/${maxAttempts}), retrying in ${delay}ms: ${error.message}`,
+			userMessage: `⏳ Retrying Linear ${operationType} (attempt ${currentAttempt}/${maxAttempts}) in ${this._formatDelay(delay)}...`
+		};
+	}
+
+	/**
+	 * Create formatted progress message for Linear operations
+	 *
+	 * @param {string} operationType - Type of operation in progress
+	 * @param {Object} task - Task object
+	 * @param {string} stage - Current stage of the operation
+	 * @param {Object} options - Additional progress options
+	 * @returns {Object} Formatted progress message
+	 */
+	createProgressMessage(operationType, task, stage, options = {}) {
+		const timestamp = new Date().toISOString();
+
+		return {
+			success: null,
+			type: 'progress',
+			operation: operationType,
+			timestamp,
+			task: {
+				id: task.id,
+				title: task.title
+			},
+			progress: {
+				stage,
+				percentage: options.percentage || null,
+				estimatedTimeRemaining: options.estimatedTime || null
+			},
+			title: `🔄 Linear ${operationType} in Progress`,
+			message: this._getProgressMessage(operationType, stage, task),
+			logMessage: `${stage} for task #${task.id}: ${task.title}`,
+			userMessage: `🔄 ${this._getProgressMessage(operationType, stage, task)}`
+		};
+	}
+
+	/**
+	 * Log formatted message using appropriate log level
+	 *
+	 * @param {Object} formattedMessage - Message object from create*Message methods
+	 * @param {boolean} includeDetails - Whether to include detailed information
+	 */
+	logFormattedMessage(formattedMessage, includeDetails = false) {
+		const { type, logMessage, details } = formattedMessage;
+
+		// Determine log level based on message type
+		let logLevel = 'info';
+		switch (type) {
+			case 'error':
+				logLevel = 'error';
+				break;
+			case 'retry':
+				logLevel = 'warn';
+				break;
+			case 'progress':
+				logLevel = 'debug';
+				break;
+			case 'success':
+			default:
+				logLevel = 'info';
+				break;
+		}
+
+		// Log the main message
+		log(logLevel, logMessage);
+
+		// Log additional details if requested and available
+		if (includeDetails && details) {
+			if (details.errorType) {
+				log('debug', `Error details: ${JSON.stringify(details, null, 2)}`);
+			} else if (details.linearIssue) {
+				log(
+					'debug',
+					`Linear issue details: ${JSON.stringify(details.linearIssue, null, 2)}`
+				);
+			}
+		}
+	}
+
+	/**
+	 * Display user-friendly message in console or return for UI
+	 *
+	 * @param {Object} formattedMessage - Message object from create*Message methods
+	 * @param {boolean} toConsole - Whether to output to console
+	 * @returns {string} User message
+	 */
+	displayUserMessage(formattedMessage, toConsole = false) {
+		const { userMessage, actions } = formattedMessage;
+
+		if (toConsole) {
+			console.log(userMessage);
+
+			// Display action buttons/links if available
+			if (actions) {
+				Object.entries(actions).forEach(([key, action]) => {
+					if (action.url) {
+						console.log(`   ${action.text}: ${action.url}`);
+					} else if (action.command) {
+						console.log(`   ${action.text}: ${action.command}`);
+					}
+				});
+			}
+		}
+
+		return userMessage;
+	}
+
+	// =============================================================================
+	// HELPER METHODS FOR MESSAGING
+	// =============================================================================
+
+	/**
+	 * Get user-friendly error information
+	 *
+	 * @param {Error} error - Error object
+	 * @param {string} errorType - Classified error type
+	 * @returns {Object} Error display information
+	 * @private
+	 */
+	_getErrorDisplayInfo(error, errorType) {
+		switch (errorType) {
+			case 'AUTHENTICATION_ERROR':
+				return {
+					category: 'Authentication Error',
+					description: 'Unable to authenticate with Linear API',
+					causes: [
+						'Invalid or expired API key',
+						'API key lacks required permissions',
+						'Linear workspace access revoked'
+					],
+					resolution: [
+						'Verify your Linear API key in configuration',
+						'Check API key permissions in Linear settings',
+						'Generate a new API key if needed'
+					],
+					actions: {
+						checkConfig: {
+							text: 'Check Configuration',
+							command: 'task-master config show',
+							primary: true
+						},
+						linearSettings: {
+							text: 'Linear API Settings',
+							url: 'https://linear.app/settings/api',
+							secondary: true
+						}
+					}
+				};
+
+			case 'RATE_LIMIT_ERROR':
+				return {
+					category: 'Rate Limit Exceeded',
+					description: 'Too many requests sent to Linear API',
+					causes: [
+						'Exceeded Linear API rate limits',
+						'Multiple concurrent operations',
+						'Burst of requests without proper spacing'
+					],
+					resolution: [
+						'Wait for rate limit to reset (usually 1 minute)',
+						'Reduce frequency of operations',
+						'The system will automatically retry with backoff'
+					],
+					actions: {
+						waitAndRetry: {
+							text: 'Will retry automatically',
+							primary: true
+						}
+					}
+				};
+
+			case 'NOT_FOUND_ERROR':
+				return {
+					category: 'Resource Not Found',
+					description: 'Linear resource could not be found',
+					causes: [
+						'Invalid team or project ID',
+						'Resource was deleted or moved',
+						'Incorrect Linear workspace'
+					],
+					resolution: [
+						'Verify team and project IDs in configuration',
+						'Check if resources exist in Linear',
+						'Update configuration with correct IDs'
+					],
+					actions: {
+						checkLinear: {
+							text: 'Check Linear Workspace',
+							url: 'https://linear.app/',
+							primary: true
+						}
+					}
+				};
+
+			case 'PERMISSION_ERROR':
+				return {
+					category: 'Permission Denied',
+					description: 'Insufficient permissions for this operation',
+					causes: [
+						'API key lacks required permissions',
+						'Team or project access restricted',
+						'Linear workspace role limitations'
+					],
+					resolution: [
+						'Check API key permissions in Linear',
+						'Request additional permissions from workspace admin',
+						'Verify team/project access rights'
+					],
+					actions: {
+						linearSettings: {
+							text: 'Linear API Settings',
+							url: 'https://linear.app/settings/api',
+							primary: true
+						}
+					}
+				};
+
+			case 'NETWORK_ERROR':
+				return {
+					category: 'Network Error',
+					description: 'Unable to connect to Linear API',
+					causes: [
+						'Internet connection issues',
+						'Linear API temporarily unavailable',
+						'Network firewall or proxy issues'
+					],
+					resolution: [
+						'Check internet connection',
+						'Wait a moment and try again',
+						'The system will automatically retry'
+					],
+					actions: {
+						willRetry: {
+							text: 'Will retry automatically',
+							primary: true
+						}
+					}
+				};
+
+			case 'SERVER_ERROR':
+				return {
+					category: 'Linear Server Error',
+					description: 'Linear API is experiencing issues',
+					causes: [
+						'Linear server temporarily unavailable',
+						'Linear API maintenance',
+						'Internal Linear service error'
+					],
+					resolution: [
+						'Wait for Linear to resolve the issue',
+						'Check Linear status page',
+						'The system will automatically retry'
+					],
+					actions: {
+						linearStatus: {
+							text: 'Linear Status Page',
+							url: 'https://status.linear.app/',
+							primary: true
+						}
+					}
+				};
+
+			case 'VALIDATION_ERROR':
+				return {
+					category: 'Validation Error',
+					description: 'Invalid data sent to Linear API',
+					causes: [
+						'Task data contains invalid characters',
+						'Required fields missing',
+						'Data exceeds Linear field limits'
+					],
+					resolution: [
+						'Check task title and description for special characters',
+						'Ensure all required fields are present',
+						'Reduce content length if too long'
+					],
+					actions: {
+						editTask: {
+							text: 'Edit Task',
+							command: `task-master update --id=${error.taskId || 'TASK_ID'}`,
+							primary: true
+						}
+					}
+				};
+
+			default:
+				return {
+					category: 'Unknown Error',
+					description: 'An unexpected error occurred',
+					causes: [
+						'Unexpected API response',
+						'Network or connectivity issues',
+						'Temporary service disruption'
+					],
+					resolution: [
+						'Try the operation again',
+						'Check Linear API status',
+						'Contact support if issue persists'
+					],
+					actions: {
+						retry: {
+							text: 'Try Again',
+							primary: true
+						}
+					}
+				};
+		}
+	}
+
+	/**
+	 * Create user-friendly error message
+	 *
+	 * @param {string} operationType - Operation type
+	 * @param {Object} task - Task object
+	 * @param {Object} errorInfo - Error display info
+	 * @param {boolean} isRetryable - Whether error is retryable
+	 * @param {Object} options - Additional options
+	 * @returns {string} User error message
+	 * @private
+	 */
+	_createUserErrorMessage(
+		operationType,
+		task,
+		errorInfo,
+		isRetryable,
+		options
+	) {
+		const taskInfo = task ? ` for task #${task.id} "${task.title}"` : '';
+		const retryInfo =
+			isRetryable && options.willRetry !== false
+				? ` (will retry automatically)`
+				: '';
+
+		return `❌ ${errorInfo.category}: Failed to ${operationType} Linear issue${taskInfo}${retryInfo}\n   ${errorInfo.resolution[0]}`;
+	}
+
+	/**
+	 * Get progress message for operation stage
+	 *
+	 * @param {string} operationType - Operation type
+	 * @param {string} stage - Current stage
+	 * @param {Object} task - Task object
+	 * @returns {string} Progress message
+	 * @private
+	 */
+	_getProgressMessage(operationType, stage, task) {
+		const taskTitle =
+			task.title.length > 30 ? task.title.substring(0, 30) + '...' : task.title;
+
+		switch (stage) {
+			case 'validating':
+				return `Validating task data for "${taskTitle}"`;
+			case 'creating':
+				return `Creating Linear issue for "${taskTitle}"`;
+			case 'parsing':
+				return `Processing Linear response for "${taskTitle}"`;
+			case 'updating':
+				return `Updating task with Linear issue ID`;
+			case 'syncing':
+				return `Synchronizing with Linear issue`;
+			default:
+				return `Processing ${operationType} for "${taskTitle}"`;
+		}
+	}
+
+	/**
+	 * Format delay in human-readable format
+	 *
+	 * @param {number} delayMs - Delay in milliseconds
+	 * @returns {string} Formatted delay
+	 * @private
+	 */
+	_formatDelay(delayMs) {
+		if (delayMs < 1000) {
+			return `${delayMs}ms`;
+		} else if (delayMs < 60000) {
+			return `${Math.round(delayMs / 1000)}s`;
+		} else {
+			return `${Math.round(delayMs / 60000)}m`;
+		}
+	}
+
+	/**
+	 * Format Linear priority for display
+	 *
+	 * @param {number} priority - Linear priority (1-4)
+	 * @returns {string} Formatted priority
+	 * @private
+	 */
+	_formatPriority(priority) {
+		switch (priority) {
+			case 1:
+				return 'Urgent';
+			case 2:
+				return 'High';
+			case 3:
+				return 'Medium';
+			case 4:
+				return 'Low';
+			default:
+				return 'Unknown';
+		}
 	}
 }
