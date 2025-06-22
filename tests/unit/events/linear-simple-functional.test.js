@@ -110,8 +110,7 @@ describe('LinearIntegrationHandler - Functional Tests', () => {
 		test('should have task title mapping functionality', () => {
 			const task = { id: '1', title: 'Test Task' };
 			const result = handler._mapTaskTitle(task);
-			expect(typeof result).toBe('string');
-			expect(result).toContain('Test Task');
+			expect(result).toBe('[TM-1] Test Task');
 		});
 
 		test('should have task description formatting functionality', () => {
@@ -132,9 +131,9 @@ describe('LinearIntegrationHandler - Functional Tests', () => {
 			const result2 = handler._mapTaskPriorityToLinear('medium');
 			const result3 = handler._mapTaskPriorityToLinear('low');
 
-			expect(typeof result1).toBe('number');
-			expect(typeof result2).toBe('number');
-			expect(typeof result3).toBe('number');
+			expect(result1).toBe(1); // high -> urgent
+			expect(result2).toBe(2); // medium -> high
+			expect(result3).toBe(3); // low -> medium
 		});
 
 		test('should have URL construction functionality', () => {
@@ -247,11 +246,9 @@ describe('LinearIntegrationHandler - Functional Tests', () => {
 			const result2 = handler._formatDelay(1500);
 			const result3 = handler._formatDelay(65000);
 
-			expect(typeof result1).toBe('string');
-			expect(typeof result2).toBe('string');
-			expect(typeof result3).toBe('string');
-			expect(result1).toContain('s');
-			expect(result2).toContain('s');
+			expect(result1).toBe('500ms');
+			expect(result2).toBe('2s');
+			expect(result3).toBe('1m');
 		});
 	});
 

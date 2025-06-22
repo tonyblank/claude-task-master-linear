@@ -255,7 +255,7 @@ describe('LinearIntegrationHandler', () => {
 			expect(handler._classifyError(networkError)).toBe('NETWORK_ERROR');
 
 			const validationError = new Error('Missing required field');
-			expect(handler._classifyError(validationError)).toBe('UNKNOWN_ERROR');
+			expect(handler._classifyError(validationError)).toBe('VALIDATION_ERROR');
 
 			const unknownError = new Error('Something went wrong');
 			expect(handler._classifyError(unknownError)).toBe('UNKNOWN_ERROR');
@@ -273,7 +273,7 @@ describe('LinearIntegrationHandler', () => {
 			expect(handler._isRetryableError(networkError)).toBe(true);
 
 			const validationError = new Error('Missing required field');
-			expect(handler._isRetryableError(validationError)).toBe(true);
+			expect(handler._isRetryableError(validationError)).toBe(false);
 		});
 
 		test('_enhanceLinearError should enhance errors with classification', () => {

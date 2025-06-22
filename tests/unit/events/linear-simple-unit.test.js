@@ -98,8 +98,8 @@ describe('LinearIntegrationHandler - Simple Unit Tests', () => {
 			expect(config.retryableErrors).toContain('NETWORK_ERROR');
 		});
 
-		test('should be enabled when properly configured', () => {
-			expect(handler.isEnabled()).toBe(false); // Not initialized yet
+		test('should not be enabled before initialization', () => {
+			expect(handler.isEnabled()).toBe(false);
 		});
 	});
 
@@ -215,6 +215,14 @@ describe('LinearIntegrationHandler - Simple Unit Tests', () => {
 
 	describe('Lifecycle Management', () => {
 		test('should handle initialization failure gracefully', async () => {
+			// Mock the Linear client to throw authentication error
+			const { LinearClient } = await import('@linear/sdk');
+			LinearClient.mockImplementationOnce(() => ({
+				viewer: jest
+					.fn()
+					.mockRejectedValue(new Error('Authentication required'))
+			}));
+
 			await expect(handler.initialize(mockConfig)).rejects.toThrow(
 				'Authentication required'
 			);

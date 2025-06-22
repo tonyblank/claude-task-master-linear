@@ -23,6 +23,7 @@ import {
 import path from 'path';
 import fs from 'fs';
 import { randomBytes } from 'crypto';
+import { tmpdir } from 'os';
 
 /**
  * Escapes HTML characters to prevent XSS
@@ -143,12 +144,7 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			errors.push('Linear team ID is required for issue creation');
 		}
 
-		// Check API key format (basic validation)
-		if (this.config.apiKey && !this.config.apiKey.startsWith('lin_api_')) {
-			errors.push(
-				'Linear API key appears to be invalid (should start with "lin_api_")'
-			);
-		}
+		// Remove this validation - Linear API key formats can vary
 
 		if (errors.length > 0) {
 			throw new Error(
@@ -1006,7 +1002,11 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 		if (message.includes('forbidden') || error.status === 403) {
 			return 'PERMISSION_ERROR';
 		}
-		if (message.includes('validation') || error.status === 400) {
+		if (
+			message.includes('validation') ||
+			message.includes('required field') ||
+			error.status === 400
+		) {
 			return 'VALIDATION_ERROR';
 		}
 		if (message.includes('network') || message.includes('timeout')) {
@@ -1415,7 +1415,7 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 		const lockPath = `${filePath}.lock`;
 		const maxRetries = 10;
 		const retryDelay = 100; // milliseconds
-		const lockTimeout = 30000; // 30 seconds
+		const lockTimeout = 10000; // 10 seconds
 
 		for (let attempt = 1; attempt <= maxRetries; attempt++) {
 			try {
@@ -1439,8 +1439,18 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 					// Lock file exists, check if it's stale
 					if (await this._isLockStale(lockPath)) {
 						log('warn', `Removing stale lock file: ${lockPath}`);
-						await this._forceCleanupLock(lockPath);
-						continue; // Retry
+						// Try to atomically remove and recreate
+						try {
+							const lockData = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+							// Double-check staleness before removal
+							if (await this._isLockStale(lockPath)) {
+								fs.unlinkSync(lockPath);
+								continue;
+							}
+						} catch (e) {
+							// Lock was already removed, continue
+							continue;
+						}
 					}
 
 					if (attempt === maxRetries) {
@@ -1541,8 +1551,11 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	 * @private
 	 */
 	async _writeToTempFile(originalPath, data, projectRoot, currentTag) {
-		const randomSuffix = randomBytes(8).toString('hex');
-		const tempPath = `${originalPath}.tmp-${randomSuffix}`;
+		// Create temp file in OS temp directory
+		const tempDir = await fs.promises.mkdtemp(
+			path.join(tmpdir(), 'taskmaster-')
+		);
+		const tempPath = path.join(tempDir, 'tasks.json');
 
 		try {
 			// Use the same writeJSON logic but write to temp file
@@ -1567,6 +1580,10 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			fs.writeFileSync(tempPath, JSON.stringify(finalData, null, 2), 'utf8');
 			return tempPath;
 		} catch (error) {
+			// Clean up temp directory on error
+			try {
+				await fs.promises.rmdir(tempDir, { recursive: true });
+			} catch (e) {}
 			throw new Error(`Failed to write to temporary file: ${error.message}`);
 		}
 	}
@@ -1982,7 +1999,6 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			case 'progress':
 				logLevel = 'debug';
 				break;
-			case 'success':
 			default:
 				logLevel = 'info';
 				break;
