@@ -200,7 +200,7 @@
           2,
           3
         ],
-        "status": "in-progress",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -275,7 +275,7 @@
               6
             ],
             "details": "Write unit tests for field mapping, response parsing, and retry logic. Create integration tests with mocked Linear API. Test atomic file updates with simulated failures. Include edge cases like malformed responses and concurrent updates.",
-            "status": "in-progress"
+            "status": "done"
           }
         ]
       },
@@ -1879,7 +1879,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-22T04:33:24.542Z",
+      "updated": "2025-06-22T05:25:49.383Z",
       "description": "Tasks for master context"
     }
   }
