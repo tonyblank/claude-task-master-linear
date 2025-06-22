@@ -8,7 +8,14 @@
 import { LinearClient } from '@linear/sdk';
 import { BaseIntegrationHandler } from '../events/base-integration-handler.js';
 import { EVENT_TYPES } from '../events/types.js';
-import { log } from '../utils.js';
+import {
+	log,
+	readJSON,
+	writeJSON,
+	getCurrentTag,
+	findProjectRoot
+} from '../utils.js';
+import path from 'path';
 
 /**
  * Escapes HTML characters to prevent XSS
@@ -58,9 +65,8 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	 * @protected
 	 */
 	async _performInitialization(config) {
-		if (!this.config.apiKey) {
-			throw new Error('Linear API key is required');
-		}
+		// Validate required configuration
+		this._validateConfiguration();
 
 		try {
 			// Initialize Linear client
@@ -91,6 +97,37 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 		} catch (error) {
 			log('error', 'Failed to initialize Linear integration:', error.message);
 			throw error;
+		}
+	}
+
+	/**
+	 * Validate Linear configuration
+	 * @private
+	 */
+	_validateConfiguration() {
+		const errors = [];
+
+		// API key is required
+		if (!this.config.apiKey) {
+			errors.push('Linear API key is required');
+		}
+
+		// Team ID is required for issue creation
+		if (this.config.createIssues !== false && !this.config.teamId) {
+			errors.push('Linear team ID is required for issue creation');
+		}
+
+		// Check API key format (basic validation)
+		if (this.config.apiKey && !this.config.apiKey.startsWith('lin_api_')) {
+			errors.push(
+				'Linear API key appears to be invalid (should start with "lin_api_")'
+			);
+		}
+
+		if (errors.length > 0) {
+			throw new Error(
+				`Linear configuration validation failed:\n${errors.join('\n')}`
+			);
 		}
 	}
 
@@ -146,11 +183,23 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 
 			log('info', `Linear issue created: ${issue.identifier} - ${issue.url}`);
 
-			// In a real implementation, we would save the Linear issue ID back to the task
-			// For this POC, we'll just log it
+			// Save the Linear issue ID back to the task atomically
+			const linearIssueInfo = {
+				id: issue.id,
+				identifier: issue.identifier,
+				url: issue.url,
+				...(issue.branchName && { branchName: issue.branchName })
+			};
+
+			const updatedTask = await this._updateTaskWithLinearIssue(
+				task.id,
+				linearIssueInfo,
+				context?.projectRoot
+			);
+
 			log(
 				'info',
-				`Task #${task.id} linked to Linear issue ${issue.identifier}`
+				`Task #${task.id} successfully linked to Linear issue ${issue.identifier}`
 			);
 
 			return {
@@ -164,7 +213,8 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				task: {
 					id: task.id,
 					title: task.title
-				}
+				},
+				updatedTask
 			};
 		} catch (error) {
 			log(
@@ -297,6 +347,93 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				return 3; // Medium
 			default:
 				return 4; // Low
+		}
+	}
+
+	/**
+	 * Atomically update task with Linear issue information
+	 *
+	 * @param {number|string} taskId - Task ID to update
+	 * @param {Object} linearIssue - Linear issue information
+	 * @param {string} linearIssue.id - Linear issue ID
+	 * @param {string} linearIssue.identifier - Linear issue identifier (e.g., "TM-123")
+	 * @param {string} linearIssue.url - Linear issue URL
+	 * @param {string} [linearIssue.branchName] - Associated git branch name
+	 * @param {string} [projectRoot] - Project root directory
+	 * @returns {Promise<Object>} Updated task
+	 * @private
+	 */
+	async _updateTaskWithLinearIssue(taskId, linearIssue, projectRoot = null) {
+		try {
+			// Determine project root if not provided
+			const actualProjectRoot = projectRoot || findProjectRoot();
+			if (!actualProjectRoot) {
+				throw new Error('Could not determine project root directory');
+			}
+
+			// Construct tasks file path
+			const tasksPath = path.join(
+				actualProjectRoot,
+				'.taskmaster',
+				'tasks',
+				'tasks.json'
+			);
+
+			// Get current tag
+			const currentTag = getCurrentTag(actualProjectRoot);
+
+			// 1. Read current data with tag resolution
+			const data = readJSON(tasksPath, actualProjectRoot, currentTag);
+			if (!data || !data.tasks) {
+				throw new Error('No valid tasks found in tasks.json');
+			}
+
+			// 2. Find the task to update
+			const taskIndex = data.tasks.findIndex(
+				(task) => task.id === taskId || task.id === parseInt(taskId)
+			);
+
+			if (taskIndex === -1) {
+				throw new Error(`Task ${taskId} not found in tasks.json`);
+			}
+
+			// 3. Update task with Linear information
+			const updatedTask = {
+				...data.tasks[taskIndex],
+				integrations: {
+					...data.tasks[taskIndex].integrations,
+					linear: {
+						issueId: linearIssue.id,
+						identifier: linearIssue.identifier,
+						url: linearIssue.url,
+						...(linearIssue.branchName && {
+							branchName: linearIssue.branchName
+						}),
+						syncedAt: new Date().toISOString(),
+						status: 'synced'
+					}
+				}
+			};
+
+			// 4. Update the tasks array
+			data.tasks[taskIndex] = updatedTask;
+
+			// 5. Write atomically using the utility function
+			writeJSON(tasksPath, data, actualProjectRoot, currentTag);
+
+			log(
+				'info',
+				`Task #${taskId} updated with Linear issue ${linearIssue.identifier}`
+			);
+
+			return updatedTask;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to update task #${taskId} with Linear issue:`,
+				error.message
+			);
+			throw error;
 		}
 	}
 
