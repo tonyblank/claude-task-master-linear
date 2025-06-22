@@ -55,7 +55,26 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			enabled: true,
 			timeout: 30000,
 			maxAttempts: 3,
-			retryableErrors: ['ECONNRESET', 'ENOTFOUND', 'TIMEOUT', 'RATE_LIMIT'],
+			// Enhanced retryable errors for Linear API specifics
+			retryableErrors: [
+				'ECONNRESET',
+				'ENOTFOUND',
+				'TIMEOUT',
+				'RATE_LIMIT',
+				'ETIMEDOUT',
+				'NETWORK_ERROR',
+				'SERVER_ERROR',
+				'EMPTY_RESPONSE',
+				429,
+				502,
+				503,
+				504 // HTTP status codes for rate limit and server errors
+			],
+			// Linear-specific retry configuration
+			backoffStrategy: 'exponential',
+			baseDelay: 1000, // 1 second base delay
+			maxDelay: 30000, // 30 second max delay
+			// Jitter is handled by the base class automatically
 			...config
 		});
 
@@ -444,55 +463,119 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	}
 
 	/**
-	 * Perform a Linear API request with proper error handling and authentication
+	 * Perform a Linear API request with retry logic, proper error handling and authentication
 	 *
 	 * @param {Function} requestFn - Function that performs the Linear API request
 	 * @param {string} operationName - Name of the operation for logging
+	 * @param {Object} retryConfig - Custom retry configuration (optional)
 	 * @returns {Promise<any>} API response
 	 * @private
 	 */
-	async _performLinearRequest(requestFn, operationName) {
-		try {
-			const result = await requestFn();
+	async _performLinearRequest(requestFn, operationName, retryConfig = {}) {
+		// Use the base class retry mechanism with Linear-specific configuration
+		return await this.retry(
+			async () => {
+				try {
+					const result = await requestFn();
 
-			if (!result) {
-				throw new Error(
-					`Linear API returned empty response for ${operationName}`
-				);
+					if (!result) {
+						const error = new Error(
+							`Linear API returned empty response for ${operationName}`
+						);
+						error.code = 'EMPTY_RESPONSE';
+						throw error;
+					}
+
+					return result;
+				} catch (error) {
+					// Enhance error with Linear-specific details and make them retryable where appropriate
+					this._enhanceLinearError(error, operationName);
+					throw error;
+				}
+			},
+			{
+				// Merge custom retry config with Linear-specific defaults
+				maxAttempts: retryConfig.maxAttempts || this.config.maxAttempts || 3,
+				backoffStrategy: retryConfig.backoffStrategy || 'exponential',
+				baseDelay: retryConfig.baseDelay || 1000, // 1 second
+				maxDelay: retryConfig.maxDelay || 30000, // 30 seconds
+				retryableErrors: [
+					...this.config.retryableErrors,
+					'RATE_LIMIT',
+					'NETWORK_ERROR',
+					'TIMEOUT',
+					'EMPTY_RESPONSE',
+					'ECONNRESET',
+					'ENOTFOUND',
+					'ETIMEDOUT',
+					429, // HTTP rate limit status code
+					502, // Bad Gateway
+					503, // Service Unavailable
+					504 // Gateway Timeout
+				],
+				...retryConfig
 			}
+		);
+	}
 
-			return result;
-		} catch (error) {
-			// Handle specific Linear API errors
-			if (error.message?.includes('Authentication')) {
-				throw new Error(
-					`Linear authentication failed for ${operationName}: Check API key`
-				);
-			}
+	/**
+	 * Enhance Linear API errors with proper classification and retry information
+	 *
+	 * @param {Error} error - Original error from Linear API
+	 * @param {string} operationName - Name of the operation for context
+	 * @private
+	 */
+	_enhanceLinearError(error, operationName) {
+		// Preserve original error properties
+		const originalMessage = error.message;
+		const originalStack = error.stack;
 
-			if (error.message?.includes('rate limit') || error.status === 429) {
-				throw new Error(
-					`Linear rate limit exceeded for ${operationName}: Please retry later`
-				);
-			}
-
-			if (error.message?.includes('not found') || error.status === 404) {
-				throw new Error(
-					`Linear resource not found for ${operationName}: Check team/project IDs`
-				);
-			}
-
-			if (error.message?.includes('forbidden') || error.status === 403) {
-				throw new Error(
-					`Linear access denied for ${operationName}: Check permissions`
-				);
-			}
-
-			// Re-throw with context
-			throw new Error(
-				`Linear API error during ${operationName}: ${error.message}`
-			);
+		// Classify and enhance Linear-specific errors
+		if (error.message?.includes('Authentication') || error.status === 401) {
+			error.code = 'AUTHENTICATION_ERROR';
+			error.retryable = false;
+			error.message = `Linear authentication failed for ${operationName}: Check API key`;
+		} else if (error.message?.includes('rate limit') || error.status === 429) {
+			error.code = 'RATE_LIMIT';
+			error.retryable = true;
+			error.message = `Linear rate limit exceeded for ${operationName}: Will retry with backoff`;
+		} else if (error.message?.includes('not found') || error.status === 404) {
+			error.code = 'NOT_FOUND';
+			error.retryable = false;
+			error.message = `Linear resource not found for ${operationName}: Check team/project IDs`;
+		} else if (error.message?.includes('forbidden') || error.status === 403) {
+			error.code = 'PERMISSION_ERROR';
+			error.retryable = false;
+			error.message = `Linear access denied for ${operationName}: Check permissions`;
+		} else if (
+			error.message?.includes('timeout') ||
+			error.code === 'ETIMEDOUT'
+		) {
+			error.code = 'TIMEOUT';
+			error.retryable = true;
+			error.message = `Linear API timeout for ${operationName}: Will retry`;
+		} else if (
+			error.message?.includes('network') ||
+			error.code === 'ECONNRESET' ||
+			error.code === 'ENOTFOUND'
+		) {
+			error.code = 'NETWORK_ERROR';
+			error.retryable = true;
+			error.message = `Network error during ${operationName}: Will retry`;
+		} else if (error.status >= 500 && error.status < 600) {
+			// Server errors are generally retryable
+			error.code = 'SERVER_ERROR';
+			error.retryable = true;
+			error.message = `Linear server error (${error.status}) for ${operationName}: Will retry`;
+		} else {
+			// Generic error - add context but don't change retryability
+			error.message = `Linear API error during ${operationName}: ${originalMessage}`;
 		}
+
+		// Preserve original information for debugging
+		error.originalMessage = originalMessage;
+		error.originalStack = originalStack;
+		error.operationName = operationName;
 	}
 
 	/**
