@@ -15,6 +15,11 @@ import {
 	getCurrentTag,
 	findProjectRoot
 } from '../utils.js';
+import {
+	getLinearConfig,
+	getLinearPriorityMapping,
+	getLinearStatusMapping
+} from '../config-manager.js';
 import path from 'path';
 
 /**
@@ -162,20 +167,8 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 		log('info', `Creating Linear issue for task #${task.id}: ${task.title}`);
 
 		try {
-			// Prepare issue data
-			const issueData = {
-				title: `[TM-${task.id}] ${task.title}`,
-				description: this._formatTaskDescription(task),
-				priority: this._mapTaskPriorityToLinear(task.priority),
-				teamId: this.config.teamId,
-				...(this.config.defaultProjectId && {
-					projectId: this.config.defaultProjectId
-				})
-			};
-
-			// Create the Linear issue
-			const issuePayload = await this.linear.createIssue(issueData);
-			const issue = await issuePayload.issue;
+			// Create the Linear issue using comprehensive field mapping
+			const issue = await this._createLinearIssue(task, context?.projectRoot);
 
 			if (!issue) {
 				throw new Error('Failed to create Linear issue - no issue returned');
@@ -331,13 +324,327 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	}
 
 	/**
-	 * Map TaskMaster priority to Linear priority
+	 * Create a Linear issue with comprehensive field mapping
+	 *
+	 * @param {Object} task - Task object from TaskMaster
+	 * @param {string} [projectRoot] - Project root directory for configuration
+	 * @returns {Promise<Object>} Linear issue object
+	 * @private
+	 */
+	async _createLinearIssue(task, projectRoot = null) {
+		try {
+			// Ensure Linear client is authenticated
+			if (!this.linear) {
+				throw new Error(
+					'Linear client not initialized - authentication may have failed'
+				);
+			}
+
+			// Get the current Linear configuration
+			const linearConfig = getLinearConfig(projectRoot);
+
+			// Build the issue data with comprehensive field mapping
+			const issueData = this._buildIssueData(task, linearConfig, projectRoot);
+
+			// Validate issue data before sending
+			this._validateIssueData(issueData);
+
+			// Add labels if enabled
+			if (linearConfig?.labels?.enabled) {
+				await this._addLabelsToIssueData(
+					issueData,
+					task,
+					linearConfig,
+					projectRoot
+				);
+			}
+
+			log(
+				'debug',
+				`Creating Linear issue with data:`,
+				JSON.stringify(issueData, null, 2)
+			);
+
+			// Create the Linear issue with proper error handling
+			const issuePayload = await this._performLinearRequest(
+				() => this.linear.createIssue(issueData),
+				'create issue'
+			);
+
+			const issue = await issuePayload.issue;
+
+			// Add source label if configured
+			if (
+				issue &&
+				linearConfig?.labels?.enabled &&
+				linearConfig.labels.sourceLabel
+			) {
+				await this._addSourceLabel(issue, linearConfig.labels.sourceLabel);
+			}
+
+			return issue;
+		} catch (error) {
+			log('error', 'Failed to create Linear issue:', error.message);
+			throw error;
+		}
+	}
+
+	/**
+	 * Validate issue data before sending to Linear API
+	 *
+	 * @param {Object} issueData - Issue data to validate
+	 * @throws {Error} If validation fails
+	 * @private
+	 */
+	_validateIssueData(issueData) {
+		if (!issueData.title || issueData.title.trim().length === 0) {
+			throw new Error('Issue title is required');
+		}
+
+		if (!issueData.teamId) {
+			throw new Error('Team ID is required for issue creation');
+		}
+
+		if (issueData.title.length > 255) {
+			throw new Error('Issue title is too long (max 255 characters)');
+		}
+
+		if (issueData.description && issueData.description.length > 100000) {
+			throw new Error('Issue description is too long (max 100,000 characters)');
+		}
+	}
+
+	/**
+	 * Perform a Linear API request with proper error handling and authentication
+	 *
+	 * @param {Function} requestFn - Function that performs the Linear API request
+	 * @param {string} operationName - Name of the operation for logging
+	 * @returns {Promise<any>} API response
+	 * @private
+	 */
+	async _performLinearRequest(requestFn, operationName) {
+		try {
+			const result = await requestFn();
+
+			if (!result) {
+				throw new Error(
+					`Linear API returned empty response for ${operationName}`
+				);
+			}
+
+			return result;
+		} catch (error) {
+			// Handle specific Linear API errors
+			if (error.message?.includes('Authentication')) {
+				throw new Error(
+					`Linear authentication failed for ${operationName}: Check API key`
+				);
+			}
+
+			if (error.message?.includes('rate limit') || error.status === 429) {
+				throw new Error(
+					`Linear rate limit exceeded for ${operationName}: Please retry later`
+				);
+			}
+
+			if (error.message?.includes('not found') || error.status === 404) {
+				throw new Error(
+					`Linear resource not found for ${operationName}: Check team/project IDs`
+				);
+			}
+
+			if (error.message?.includes('forbidden') || error.status === 403) {
+				throw new Error(
+					`Linear access denied for ${operationName}: Check permissions`
+				);
+			}
+
+			// Re-throw with context
+			throw new Error(
+				`Linear API error during ${operationName}: ${error.message}`
+			);
+		}
+	}
+
+	/**
+	 * Build the core issue data object with field mapping
+	 *
+	 * @param {Object} task - Task object
+	 * @param {Object} linearConfig - Linear configuration
+	 * @param {string} [projectRoot] - Project root directory
+	 * @returns {Object} Issue data for Linear API
+	 * @private
+	 */
+	_buildIssueData(task, linearConfig, projectRoot) {
+		const issueData = {
+			title: this._mapTaskTitle(task),
+			description: this._formatTaskDescription(task),
+			priority: this._mapTaskPriorityToLinear(
+				task.priority,
+				linearConfig,
+				projectRoot
+			),
+			teamId: this.config.teamId || linearConfig?.team?.id
+		};
+
+		// Add project if configured
+		if (this.config.defaultProjectId || linearConfig?.project?.id) {
+			issueData.projectId =
+				this.config.defaultProjectId || linearConfig.project.id;
+		}
+
+		// Add state if task status maps to a Linear state
+		const statusMapping = getLinearStatusMapping(projectRoot);
+		if (statusMapping && task.status && statusMapping[task.status]) {
+			issueData.stateId = statusMapping[task.status];
+		}
+
+		return issueData;
+	}
+
+	/**
+	 * Map task title to Linear issue title
+	 *
+	 * @param {Object} task - Task object
+	 * @returns {string} Formatted title
+	 * @private
+	 */
+	_mapTaskTitle(task) {
+		return `[TM-${task.id}] ${task.title}`;
+	}
+
+	/**
+	 * Add labels to issue data based on configuration
+	 *
+	 * @param {Object} issueData - Issue data object being built
+	 * @param {Object} task - Task object
+	 * @param {Object} linearConfig - Linear configuration
+	 * @param {string} [projectRoot] - Project root directory
+	 * @returns {Promise<void>}
+	 * @private
+	 */
+	async _addLabelsToIssueData(issueData, task, linearConfig, projectRoot) {
+		try {
+			const labels = [];
+
+			// Add priority label if mapping is configured
+			const priorityMapping = getLinearPriorityMapping(projectRoot);
+			if (priorityMapping && task.priority && priorityMapping[task.priority]) {
+				const priorityLabel = await this._findOrCreateLabel(
+					priorityMapping[task.priority]
+				);
+				if (priorityLabel) {
+					labels.push(priorityLabel.id);
+				}
+			}
+
+			// Add status label if mapping is configured
+			const statusMapping = getLinearStatusMapping(projectRoot);
+			if (statusMapping && task.status && statusMapping[task.status]) {
+				const statusLabel = await this._findOrCreateLabel(
+					statusMapping[task.status]
+				);
+				if (statusLabel) {
+					labels.push(statusLabel.id);
+				}
+			}
+
+			if (labels.length > 0) {
+				issueData.labelIds = labels;
+			}
+		} catch (error) {
+			log('warn', 'Failed to add labels to issue:', error.message);
+			// Don't fail issue creation if label assignment fails
+		}
+	}
+
+	/**
+	 * Find or create a label in Linear
+	 *
+	 * @param {string} labelName - Label name to find or create
+	 * @returns {Promise<Object|null>} Label object or null if failed
+	 * @private
+	 */
+	async _findOrCreateLabel(labelName) {
+		try {
+			// First try to find existing label
+			const labels = await this._performLinearRequest(
+				() =>
+					this.linear.labels({
+						filter: { name: { eq: labelName } }
+					}),
+				`find label "${labelName}"`
+			);
+
+			if (labels.nodes && labels.nodes.length > 0) {
+				return labels.nodes[0];
+			}
+
+			// Create new label if not found
+			const labelPayload = await this._performLinearRequest(
+				() =>
+					this.linear.createLabel({
+						name: labelName,
+						teamId: this.config.teamId
+					}),
+				`create label "${labelName}"`
+			);
+
+			return await labelPayload.label;
+		} catch (error) {
+			log(
+				'warn',
+				`Failed to find or create label "${labelName}":`,
+				error.message
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Add source label to identify TaskMaster-created issues
+	 *
+	 * @param {Object} issue - Linear issue object
+	 * @param {string} sourceLabel - Source label name
+	 * @returns {Promise<void>}
+	 * @private
+	 */
+	async _addSourceLabel(issue, sourceLabel) {
+		try {
+			const label = await this._findOrCreateLabel(sourceLabel);
+			if (label && issue.id) {
+				await this.linear.updateIssue(issue.id, {
+					labelIds: [...(issue.labelIds || []), label.id]
+				});
+			}
+		} catch (error) {
+			log('warn', 'Failed to add source label:', error.message);
+			// Don't fail if source label can't be added
+		}
+	}
+
+	/**
+	 * Map TaskMaster priority to Linear priority with configuration support
 	 *
 	 * @param {string} taskPriority - TaskMaster priority (high, medium, low)
+	 * @param {Object} [linearConfig] - Linear configuration
+	 * @param {string} [projectRoot] - Project root directory
 	 * @returns {number} Linear priority (1-4)
 	 * @private
 	 */
-	_mapTaskPriorityToLinear(taskPriority) {
+	_mapTaskPriorityToLinear(
+		taskPriority,
+		linearConfig = null,
+		projectRoot = null
+	) {
+		// Use configuration-based priority mapping if available
+		const priorityMapping = getLinearPriorityMapping(projectRoot);
+		if (priorityMapping && taskPriority && priorityMapping[taskPriority]) {
+			// If there's a mapping, use default Linear priority numbers
+			// This is for when priorities are mapped to labels instead of Linear's priority field
+		}
+
+		// Default priority mapping to Linear's built-in priority system
 		switch (taskPriority?.toLowerCase()) {
 			case 'high':
 				return 1; // Urgent

@@ -218,7 +218,7 @@
               1
             ],
             "details": "Implement createIssue method that maps task properties (title, description, priority, labels) to Linear's API format. Handle team/project assignment, priority levels, and label creation/assignment. Include proper request headers and authentication.",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 3,
@@ -228,7 +228,7 @@
               2
             ],
             "details": "Parse Linear API responses to extract issue IDs, URLs, and other metadata. Handle both successful responses and error cases. Create standardized response objects that include issue ID, URL, and any relevant metadata for storage.",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 4,
@@ -1879,7 +1879,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-22T03:01:02.305Z",
+      "updated": "2025-06-22T03:08:12.146Z",
       "description": "Tasks for master context"
     }
   }
