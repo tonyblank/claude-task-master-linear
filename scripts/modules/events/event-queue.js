@@ -132,7 +132,7 @@ export class EventQueue {
 		}
 
 		const item = {
-			id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+			id: `item_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
 			data,
 			options: itemOptions,
 			queuedAt: Date.now(),
