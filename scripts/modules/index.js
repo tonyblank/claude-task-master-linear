@@ -12,3 +12,8 @@ export * from './prompts.js';
 export * from './linear-api-validation.js';
 export * from './linear-team-selection.js';
 export * from './linear-project-selection.js';
+export * from './language-detection.js';
+export * from './linear-label-management.js';
+export * from './linear-label-selection.js';
+export * from './linear-label-validation.js';
+export * from './linear-label-audit.js';
