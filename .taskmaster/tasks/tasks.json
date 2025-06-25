@@ -308,7 +308,7 @@
               1
             ],
             "details": "Prompt user for API key input with secure masking, validate the key format, test the key by making a simple API call to Linear, provide clear error messages for invalid keys, and allow retry on failure",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 3,
@@ -318,7 +318,7 @@
               2
             ],
             "details": "Use the validated API key to fetch all teams the user has access to, display teams in a searchable list format using inquirer, handle pagination if needed, and store the selected team ID for subsequent use",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 4,
@@ -328,7 +328,7 @@
               3
             ],
             "details": "Fetch all projects for the selected team, present them in a checkbox list allowing multiple selections, show project descriptions if available, validate that at least one project is selected, and store project IDs for configuration",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 5,
@@ -1879,7 +1879,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-25T10:25:28.074Z",
+      "updated": "2025-06-25T11:04:50.973Z",
       "description": "Tasks for master context"
     }
   }
