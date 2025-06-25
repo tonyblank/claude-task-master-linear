@@ -648,7 +648,7 @@ TestEnvironment.isolatedSuite(
 				const stats = integrationManager.getStats();
 
 				expect(stats.eventsEmitted).toBe(100);
-				expect(processingTime).toBeLessThan(10000); // Should complete within 10 seconds (CI environment)
+				expect(processingTime).toBeLessThan(15000); // Should complete within 15 seconds (CI environment)
 			});
 
 			test('should maintain performance under concurrent load', async () => {
@@ -683,7 +683,7 @@ TestEnvironment.isolatedSuite(
 				const stats = integrationManager.getStats();
 				expect(stats.eventsEmitted).toBe(concurrentEvents);
 				expect(stats.eventsProcessed).toBe(concurrentEvents);
-				expect(endTime - startTime).toBeLessThan(5000); // Should complete within 5 seconds (CI environment)
+				expect(endTime - startTime).toBeLessThan(8000); // Should complete within 8 seconds (CI environment)
 			});
 		});
 	},

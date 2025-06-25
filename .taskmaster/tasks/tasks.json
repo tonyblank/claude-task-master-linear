@@ -348,7 +348,7 @@
               5
             ],
             "details": "Create .env file with API key and sensitive data, generate config.json with team, project, and label preferences, ensure proper file permissions for .env, create backup of existing files if present, and validate file write operations",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 7,
@@ -358,7 +358,7 @@
               6
             ],
             "details": "Show confirmation of successful setup with summary of selections, provide clear next steps for running the main application, include troubleshooting tips and links to documentation, offer option to test the configuration, and display contact information for support",
-            "status": "pending"
+            "status": "in-progress"
           }
         ]
       },
@@ -1879,7 +1879,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-25T12:36:39.508Z",
+      "updated": "2025-06-25T13:40:27.683Z",
       "description": "Tasks for master context"
     }
   }
