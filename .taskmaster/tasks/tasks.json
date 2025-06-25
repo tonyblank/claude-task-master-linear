@@ -298,7 +298,7 @@
             "description": "Install and configure the inquirer package to handle interactive command-line prompts throughout the setup process",
             "dependencies": [],
             "details": "Install inquirer as a dependency, create a base prompt utility module that can be reused across different setup steps, and establish consistent styling and validation patterns for all prompts",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 2,
@@ -308,7 +308,7 @@
               1
             ],
             "details": "Prompt user for API key input with secure masking, validate the key format, test the key by making a simple API call to Linear, provide clear error messages for invalid keys, and allow retry on failure",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 3,
@@ -1879,7 +1879,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-25T10:12:56.561Z",
+      "updated": "2025-06-25T10:25:28.074Z",
       "description": "Tasks for master context"
     }
   }

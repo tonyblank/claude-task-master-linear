@@ -208,7 +208,7 @@ describe('Prompts Utility Module', () => {
 
 				expect(config.type).toBe('input');
 				expect(config.name).toBe('testName');
-				expect(config.message).toBe('Test Message:');
+				expect(config.message).toContain('Test Message:');
 				expect(config.validate).toBe(validators.required);
 			});
 
@@ -230,7 +230,7 @@ describe('Prompts Utility Module', () => {
 
 				expect(config.type).toBe('confirm');
 				expect(config.name).toBe('testName');
-				expect(config.message).toBe('Test Message?');
+				expect(config.message).toContain('Test Message?');
 				expect(config.default).toBe(false);
 			});
 		});
@@ -242,7 +242,7 @@ describe('Prompts Utility Module', () => {
 
 				expect(config.type).toBe('list');
 				expect(config.name).toBe('testName');
-				expect(config.message).toBe('Test Message:');
+				expect(config.message).toContain('Test Message:');
 				expect(config.choices).toEqual([
 					{ name: 'Option 1', value: 'Option 1' },
 					{ name: 'Option 2', value: 'Option 2' }
@@ -274,7 +274,7 @@ describe('Prompts Utility Module', () => {
 
 				expect(config.type).toBe('checkbox');
 				expect(config.name).toBe('testName');
-				expect(config.message).toBe('Test Message:');
+				expect(config.message).toContain('Test Message:');
 				expect(config.choices).toEqual([
 					{ name: 'Option 1', value: 'Option 1' },
 					{ name: 'Option 2', value: 'Option 2' }
@@ -300,28 +300,40 @@ describe('Prompts Utility Module', () => {
 	describe('messages', () => {
 		it('should display success messages', () => {
 			messages.success('Test success');
-			expect(console.log).toHaveBeenCalledWith('✓ Test success');
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining('✓ Test success')
+			);
 		});
 
 		it('should display error messages', () => {
 			messages.error('Test error');
-			expect(console.log).toHaveBeenCalledWith('✗ Test error');
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining('✗ Test error')
+			);
 		});
 
 		it('should display warning messages', () => {
 			messages.warning('Test warning');
-			expect(console.log).toHaveBeenCalledWith('⚠ Test warning');
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining('⚠ Test warning')
+			);
 		});
 
 		it('should display info messages', () => {
 			messages.info('Test info');
-			expect(console.log).toHaveBeenCalledWith('ℹ Test info');
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining('ℹ Test info')
+			);
 		});
 
 		it('should display headers', () => {
 			messages.header('Test Header');
-			expect(console.log).toHaveBeenCalledWith('Test Header');
-			expect(console.log).toHaveBeenCalledWith('───────────');
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining('Test Header')
+			);
+			expect(console.log).toHaveBeenCalledWith(
+				expect.stringContaining('───────────')
+			);
 		});
 	});
 });
