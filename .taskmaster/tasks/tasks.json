@@ -328,7 +328,7 @@
               3
             ],
             "details": "Fetch all projects for the selected team, present them in a checkbox list allowing multiple selections, show project descriptions if available, validate that at least one project is selected, and store project IDs for configuration",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 5,
@@ -338,7 +338,7 @@
               4
             ],
             "details": "Fetch existing labels from selected projects, allow users to select which labels to track, provide options for label filtering rules, configure label-based routing preferences, and validate label selections against project availability",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 6,
@@ -1879,7 +1879,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-25T11:04:50.973Z",
+      "updated": "2025-06-25T11:17:58.785Z",
       "description": "Tasks for master context"
     }
   }
