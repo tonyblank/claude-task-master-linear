@@ -581,7 +581,7 @@ export function validateLabelConsistency(projectLabels, labelSetsConfig) {
 	if (result.summary.inconsistentLabels > 0) {
 		result.recommendations.push({
 			type: 'fix_colors',
-			message: `Fix ${result.summary.inconsistentLabels} color inconsistenc(ies)`,
+			message: `Fix ${result.summary.inconsistentLabels} color inconsistencies`,
 			priority: 'medium'
 		});
 		result.consistent = false;

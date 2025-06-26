@@ -119,8 +119,8 @@ function createConfigurationSummary(wizardData, options = {}) {
 				? `${projectRoot}/.env (would be created/updated)`
 				: `${projectRoot}/.env`,
 			config: dryRun
-				? `${projectRoot}/linear-config.json (would be created)`
-				: `${projectRoot}/linear-config.json`,
+				? `${projectRoot}/.taskmaster/linear-config.json (would be created)`
+				: `${projectRoot}/.taskmaster/linear-config.json`,
 			backup: dryRun ? `${projectRoot}/.env.backup.* (would be created)` : null
 		},
 		dryRun

@@ -78,7 +78,7 @@ export const validators = {
 	 * Validates that input is a number
 	 */
 	number: (input) => {
-		if (isNaN(Number(input))) {
+		if (Number.isNaN(Number(input))) {
 			return 'Please enter a valid number.';
 		}
 		return true;
@@ -89,7 +89,7 @@ export const validators = {
 	 */
 	positiveInteger: (input) => {
 		const num = Number(input);
-		if (isNaN(num) || num <= 0 || !Number.isInteger(num)) {
+		if (Number.isNaN(num) || num <= 0 || !Number.isInteger(num)) {
 			return 'Please enter a positive integer.';
 		}
 		return true;

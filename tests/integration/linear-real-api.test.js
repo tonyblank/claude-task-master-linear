@@ -8,13 +8,22 @@
  * and should be run separately from unit tests.
  */
 
+import dotenv from 'dotenv';
 import { LinearClient } from '@linear/sdk';
 import { LinearTeamSelector } from '../../scripts/modules/linear-team-selection.js';
 import { testLinearApiKey } from '../../scripts/modules/linear-api-validation.js';
 
+// Load real environment variables from .env file for integration tests
+// This needs to be done after Jest setup has potentially overridden them
+const envConfig = dotenv.config();
+const realLinearApiKey =
+	envConfig.parsed?.LINEAR_API_KEY || process.env.LINEAR_API_KEY_REAL;
+
 // Skip these tests if no real API key is provided
 const skipRealApiTests =
-	!process.env.LINEAR_API_KEY || process.env.LINEAR_API_KEY.startsWith('mock');
+	!realLinearApiKey ||
+	realLinearApiKey.startsWith('mock') ||
+	realLinearApiKey.includes('00000');
 
 describe('Linear Real API Integration', () => {
 	let apiKey;
@@ -27,30 +36,33 @@ describe('Linear Real API Integration', () => {
 			);
 			return;
 		}
-		apiKey = process.env.LINEAR_API_KEY;
+		apiKey = realLinearApiKey;
 		client = new LinearClient({ apiKey });
 	});
 
-	describe.skip(skipRealApiTests ? 'Linear API Key Validation' : '', () => {
-		test('should validate real API key format and connectivity', async () => {
-			const result = await testLinearApiKey(apiKey);
+	(skipRealApiTests ? describe.skip : describe)(
+		'Linear API Key Validation',
+		() => {
+			test('should validate real API key format and connectivity', async () => {
+				const result = await testLinearApiKey(apiKey);
 
-			expect(result.success).toBe(true);
-			expect(result.user).toBeDefined();
-			expect(result.user.id).toBeDefined();
-			expect(result.user.name).toBeDefined();
-		});
+				expect(result.success).toBe(true);
+				expect(result.user).toBeDefined();
+				expect(result.user.id).toBeDefined();
+				expect(result.user.name).toBeDefined();
+			});
 
-		test('should handle invalid API key gracefully', async () => {
-			const result = await testLinearApiKey('lin_api_invalid_key_12345');
+			test('should handle invalid API key gracefully', async () => {
+				const result = await testLinearApiKey('lin_api_invalid_key_12345');
 
-			expect(result.success).toBe(false);
-			expect(result.error).toBeDefined();
-			expect(result.error.type).toBe('authentication');
-		});
-	});
+				expect(result.success).toBe(false);
+				expect(result.error).toBeDefined();
+				expect(result.error.type).toBe('authentication');
+			});
+		}
+	);
 
-	describe.skip(skipRealApiTests ? 'Linear Team Fetching' : '', () => {
+	(skipRealApiTests ? describe.skip : describe)('Linear Team Fetching', () => {
 		test('should fetch teams without GraphQL schema errors', async () => {
 			const selector = new LinearTeamSelector({ apiKey });
 
@@ -81,29 +93,28 @@ describe('Linear Real API Integration', () => {
 		});
 	});
 
-	describe.skip(skipRealApiTests ? 'Linear Projects Fetching' : '', () => {
-		test('should fetch projects for a team', async () => {
-			const selector = new LinearTeamSelector({ apiKey });
-			const teams = await selector.fetchTeams();
+	(skipRealApiTests ? describe.skip : describe)(
+		'Linear Projects Fetching',
+		() => {
+			test('should fetch projects for a team', async () => {
+				const selector = new LinearTeamSelector({ apiKey });
+				const teams = await selector.fetchTeams();
 
-			if (teams.length > 0) {
-				const firstTeam = teams[0];
+				if (teams.length > 0) {
+					const firstTeam = teams[0];
 
-				// Test project fetching for this team
-				// Note: Using minimal filter due to GraphQL schema constraints
-				// Complex project state filters cause "Field not defined" errors
-				const projectsConnection = await client.projects({
-					first: 10,
-					filter: {
-						team: { id: { eq: firstTeam.id } }
-					}
-				});
+					// Get the team object from the API and then fetch its projects
+					const team = await client.team(firstTeam.id);
+					const projectsConnection = await team.projects({
+						first: 10
+					});
 
-				expect(projectsConnection).toBeDefined();
-				expect(projectsConnection.nodes).toBeDefined();
-			}
-		});
-	});
+					expect(projectsConnection).toBeDefined();
+					expect(projectsConnection.nodes).toBeDefined();
+				}
+			});
+		}
+	);
 });
 
 /**

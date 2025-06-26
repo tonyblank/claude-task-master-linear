@@ -490,15 +490,22 @@ export class LinearProjectSelector {
 	/**
 	 * Build project filter based on configuration
 	 *
-	 * @returns {Object} Filter object for Linear API
+	 * Note: statusFilter configuration is handled at the application level,
+	 * not via Linear API filters. The Linear API has limited project filtering
+	 * capabilities and primarily handles access control automatically.
+	 * Status filtering is implemented by fetching all accessible projects
+	 * and then filtering/displaying them based on this.config.statusFilter
+	 * in the calling methods.
+	 *
+	 * @returns {Object} Filter object for Linear API (empty for all accessible projects)
 	 * @private
 	 */
 	_buildProjectFilter() {
-		// Note: Linear API project filtering has schema constraints.
-		// Like teams, Linear API only returns projects the user has access to,
-		// so we don't need complex filters. Let the API handle access control.
+		// Linear API project filtering has schema constraints.
+		// statusFilter is applied at application level in calling methods
+		// rather than as API-level filtering due to Linear API limitations.
 
-		// Return empty filter to get all accessible projects
+		// Return empty filter to get all accessible projects, then filter at app level
 		return {};
 	}
 

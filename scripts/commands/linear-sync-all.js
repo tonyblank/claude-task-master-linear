@@ -20,32 +20,12 @@ import { linearSyncAll } from '../linear-sync-all.js';
  * Following the integration command pattern: {integration}-{command-name}
  */
 export async function linearSyncAllCommand(options) {
-	// Set up process.argv to match what the main function expects
-	const originalArgv = process.argv.slice();
-
 	try {
-		const syncArgs = ['node', 'linear-sync-all'];
-
-		// Map command options to CLI arguments
-		if (options.dryRun) syncArgs.push('--dry-run');
-		if (options.resolveConflicts) syncArgs.push('--resolve-conflicts');
-		if (options.projectRoot)
-			syncArgs.push('--project-root', options.projectRoot);
-		if (options.teamId) syncArgs.push('--team-id', options.teamId);
-		if (options.force) syncArgs.push('--force');
-		if (options.verbose) syncArgs.push('--verbose');
-		if (options.labelsOnly) syncArgs.push('--labels-only');
-
-		process.argv = syncArgs;
-
-		// Execute the main sync function
-		await linearSyncAll();
+		// Execute the main sync function with provided options directly
+		await linearSyncAll(options);
 	} catch (error) {
 		console.error(`Comprehensive sync command failed: ${error.message}`);
 		process.exit(1);
-	} finally {
-		// Always restore original argv
-		process.argv = originalArgv;
 	}
 }
 

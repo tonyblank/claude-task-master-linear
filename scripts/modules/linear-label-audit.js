@@ -311,7 +311,7 @@ export class LinearLabelAuditor {
 								action: 'create_label',
 								teamId: this.config.teamId,
 								labelConfig:
-									config.categories[issue.category]?.labels[
+									config.categories[issue.category]?.labels?.[
 										issue.labelName.toLowerCase()
 									]
 							}

@@ -11,6 +11,7 @@
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync } from 'fs';
+import { config } from 'dotenv';
 import {
 	LinearLabelManager,
 	syncLinearLabels
@@ -132,24 +133,10 @@ ${chalk.bold('SYNC STATES:')}
 /**
  * Load environment configuration
  */
-function loadEnvironment() {
-	try {
-		// Try to load .env file
-		const envPath = join(process.cwd(), '.env');
-		const envContent = readFileSync(envPath, 'utf8');
-
-		// Simple .env parser
-		envContent.split('\n').forEach((line) => {
-			const trimmed = line.trim();
-			if (trimmed && !trimmed.startsWith('#')) {
-				const [key, ...valueParts] = trimmed.split('=');
-				if (key && valueParts.length > 0) {
-					process.env[key.trim()] = valueParts.join('=').trim();
-				}
-			}
-		});
-	} catch (error) {
-		// .env file doesn't exist or can't be read - continue with system env
+function loadEnvironment(projectRoot = null) {
+	const envPath = join(projectRoot || process.cwd(), '.env');
+	const result = config({ path: envPath });
+	if (result.error) {
 		log('debug', 'No .env file found, using system environment variables');
 	}
 }
@@ -457,8 +444,8 @@ async function confirmSync(analysis, options) {
 /**
  * Main execution function
  */
-async function main() {
-	const options = parseArgs();
+async function main(providedOptions = null) {
+	const options = providedOptions || parseArgs();
 
 	if (options.help) {
 		showHelp();
@@ -475,7 +462,7 @@ async function main() {
 
 	try {
 		// Load environment
-		loadEnvironment();
+		loadEnvironment(options.projectRoot);
 
 		// Get API key
 		const apiKey = await getLinearApiKey(options);

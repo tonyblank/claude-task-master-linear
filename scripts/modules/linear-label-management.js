@@ -74,6 +74,14 @@ export class LinearLabelManager {
 	}
 
 	/**
+	 * Get the label sets configuration path
+	 * @returns {string} Path to the linear config file
+	 */
+	get labelSetsPath() {
+		return this.linearConfigPath;
+	}
+
+	/**
 	 * Load label sets configuration from file
 	 *
 	 * @returns {Object} Label sets configuration
@@ -1115,7 +1123,7 @@ export class LinearLabelManager {
 				}
 
 				if (attempt < this.config.maxRetries) {
-					const delay = this.config.retryDelay * Math.pow(2, attempt - 1);
+					const delay = this.config.retryDelay * 2 ** (attempt - 1);
 					log(
 						'warn',
 						`${operationName} attempt ${attempt} failed, retrying in ${delay}ms: ${error.message}`

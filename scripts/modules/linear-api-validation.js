@@ -76,7 +76,10 @@ export function classifyLinearError(error) {
 		status === 401 ||
 		status === 403 ||
 		message.includes('unauthorized') ||
-		message.includes('invalid token')
+		message.includes('invalid token') ||
+		message.includes('authentication required') ||
+		message.includes('not authenticated') ||
+		message.includes('authentication failed')
 	) {
 		return LinearErrorTypes.AUTHENTICATION;
 	}

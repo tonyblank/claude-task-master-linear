@@ -103,9 +103,7 @@ describe('Linear sync command modules', () => {
 
 			mockLinearSyncLabels.mockRejectedValue(new Error('Test error'));
 
-			await linearSyncLabelsCommand({});
-
-			expect(process.exit).toHaveBeenCalledWith(1);
+			await expect(linearSyncLabelsCommand({})).rejects.toThrow('Test error');
 		});
 	});
 

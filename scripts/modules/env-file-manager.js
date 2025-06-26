@@ -45,10 +45,10 @@ export function parseEnvFile(filePath) {
 			const trimmed = line.trim();
 
 			// Check for Linear section marker
-			if (
-				trimmed.includes('Linear Integration') ||
-				trimmed.includes('LINEAR_')
-			) {
+			// Check for Linear section marker comment specifically
+			if (trimmed === '# Linear Integration Settings') {
+				hasLinearSection = true;
+			} else if (trimmed.startsWith('LINEAR_') && trimmed.includes('=')) {
 				hasLinearSection = true;
 			}
 

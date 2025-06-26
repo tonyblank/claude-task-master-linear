@@ -44,9 +44,15 @@ function parseArgs() {
 				options.resolveConflicts = true;
 				break;
 			case '--project-root':
+				if (i + 1 >= args.length) {
+					throw new Error('--project-root requires a value');
+				}
 				options.projectRoot = args[++i];
 				break;
 			case '--team-id':
+				if (i + 1 >= args.length) {
+					throw new Error('--team-id requires a value');
+				}
 				options.teamId = args[++i];
 				break;
 			case '--force':
@@ -66,8 +72,7 @@ function parseArgs() {
 				break;
 			default:
 				if (arg.startsWith('-')) {
-					console.error(`Unknown option: ${arg}`);
-					process.exit(1);
+					throw new Error(`Unknown option: ${arg}`);
 				}
 				break;
 		}
@@ -153,26 +158,8 @@ async function syncLabels(options) {
 	console.log('─'.repeat(40));
 
 	try {
-		// Temporarily override process.argv to pass options to linearSyncLabels
-		const originalArgv = process.argv.slice();
-		const syncArgs = ['node', 'linear-sync-labels'];
-
-		if (options.dryRun) syncArgs.push('--dry-run');
-		if (options.resolveConflicts) syncArgs.push('--resolve-conflicts');
-		if (options.projectRoot && options.projectRoot !== '/app') {
-			syncArgs.push('--project-root', options.projectRoot);
-		}
-		if (options.teamId) syncArgs.push('--team-id', options.teamId);
-		if (options.force) syncArgs.push('--force');
-		if (options.verbose) syncArgs.push('--verbose');
-
-		process.argv = syncArgs;
-
-		// Execute label sync
-		await linearSyncLabels();
-
-		// Restore original argv
-		process.argv = originalArgv;
+		// Execute label sync with provided options directly
+		await linearSyncLabels(options);
 
 		return { success: true, component: 'labels' };
 	} catch (error) {
@@ -198,8 +185,13 @@ async function syncTeams(options) {
 	console.log(chalk.gray('Team sync is planned for future release.'));
 	console.log(chalk.gray('Teams are currently read-only.'));
 
-	// Future implementation will go here
-	return { success: true, component: 'teams', skipped: true };
+	// TODO: Implement team sync
+	return {
+		success: false,
+		component: 'teams',
+		notImplemented: true,
+		error: 'Team sync not yet implemented'
+	};
 }
 
 /**
@@ -216,8 +208,13 @@ async function syncProjects(options) {
 	console.log(chalk.gray('Project sync is planned for future release.'));
 	console.log(chalk.gray('Projects are currently read-only.'));
 
-	// Future implementation will go here
-	return { success: true, component: 'projects', skipped: true };
+	// TODO: Implement project sync
+	return {
+		success: false,
+		component: 'projects',
+		notImplemented: true,
+		error: 'Project sync not yet implemented'
+	};
 }
 
 /**
@@ -286,12 +283,12 @@ function getComponentIcon(component) {
 /**
  * Main execution function
  */
-async function main() {
-	const options = parseArgs();
+async function main(providedOptions = null) {
+	const options = providedOptions || parseArgs();
 
 	if (options.help) {
 		showHelp();
-		process.exit(0);
+		return;
 	}
 
 	// Configure logging
@@ -350,7 +347,7 @@ async function main() {
 		const allSuccess = displaySyncSummary(results);
 
 		if (!allSuccess) {
-			process.exit(1);
+			throw new Error('Some components failed to sync');
 		}
 	} catch (error) {
 		console.error(
@@ -359,7 +356,7 @@ async function main() {
 		if (options.verbose) {
 			console.error(error.stack);
 		}
-		process.exit(1);
+		throw error;
 	}
 }
 

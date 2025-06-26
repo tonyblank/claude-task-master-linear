@@ -515,7 +515,7 @@ describe('LinearLabelManager', () => {
 
 			try {
 				await manager.createLabel(validTeamId, labelConfig);
-				fail('Expected error to be thrown');
+				throw new Error('Expected error to be thrown');
 			} catch (error) {
 				expect(error.message).toContain('Go to your Linear team settings');
 				expect(error.message).toContain('Navigate to Labels section');
@@ -559,7 +559,7 @@ describe('LinearLabelManager', () => {
 
 			try {
 				await manager.createLabel(validTeamId, labelConfig);
-				fail('Expected error to be thrown');
+				throw new Error('Expected error to be thrown');
 			} catch (error) {
 				expect(error.message).toContain('Description: ""');
 				expect(error.message).toContain('Color: "#6366f1"');

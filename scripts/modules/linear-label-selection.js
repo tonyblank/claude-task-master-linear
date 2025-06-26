@@ -64,7 +64,7 @@ export class LinearLabelSelector {
 		try {
 			messages.header('Label Preference Configuration');
 			console.log(
-				'Configure which labels TaskMaster will use and manage in Linear.\\n'
+				'Configure which labels TaskMaster will use and manage in Linear.\n'
 			);
 
 			// Step 1: Load and analyze current configuration
@@ -135,7 +135,7 @@ export class LinearLabelSelector {
 		);
 		console.log(`   • Required Labels: ${analysis.summary.totalRequired}`);
 		console.log(`   • Missing Labels: ${analysis.summary.totalMissing}`);
-		console.log(`   • Conflicts: ${analysis.summary.totalConflicts}\\n`);
+		console.log(`   • Conflicts: ${analysis.summary.totalConflicts}\n`);
 
 		if (analysis.enabledCategories.length > 0) {
 			console.log('📋 Enabled Categories:');
@@ -171,7 +171,7 @@ export class LinearLabelSelector {
 	async _configureLabelCategories(labelSetsConfig) {
 		messages.header('Label Category Configuration');
 		console.log(
-			'Choose which types of labels you want TaskMaster to manage:\\n'
+			'Choose which types of labels you want TaskMaster to manage:\n'
 		);
 
 		// Display category information
@@ -255,7 +255,7 @@ export class LinearLabelSelector {
 	async _configureLanguageDetection(languageCategory) {
 		messages.info('⚙️ Language Detection Configuration');
 		console.log(
-			'TaskMaster can automatically detect programming languages from task content.\\n'
+			'TaskMaster can automatically detect programming languages from task content.\n'
 		);
 
 		const languageSettings = await inquirer.prompt([
@@ -361,7 +361,7 @@ export class LinearLabelSelector {
 	async _configureAutomationSettings(labelSetsConfig) {
 		messages.header('Label Automation Configuration');
 		console.log(
-			'Configure how TaskMaster automatically applies labels to issues:\\n'
+			'Configure how TaskMaster automatically applies labels to issues:\n'
 		);
 
 		// Core label automation (taskmaster label)
@@ -371,7 +371,7 @@ export class LinearLabelSelector {
 				'   • The "taskmaster" label identifies issues managed by TaskMaster'
 			);
 			console.log(
-				'   • Recommended: Enable automatic application to all managed issues\\n'
+				'   • Recommended: Enable automatic application to all managed issues\n'
 			);
 
 			const coreAutomation = await inquirer.prompt([
@@ -392,7 +392,7 @@ export class LinearLabelSelector {
 			console.log(
 				'   • Type labels (Bug, Feature, etc.) are typically set manually'
 			);
-			console.log('   • TaskMaster can suggest types based on task content\\n');
+			console.log('   • TaskMaster can suggest types based on task content\n');
 
 			const typeAutomation = await inquirer.prompt([
 				promptConfigs.confirm(
@@ -417,7 +417,7 @@ export class LinearLabelSelector {
 				'   • Language labels are detected from file paths in task content'
 			);
 			console.log(
-				'   • Can be applied automatically or suggested for manual review\\n'
+				'   • Can be applied automatically or suggested for manual review\n'
 			);
 
 			const langAutomation = await inquirer.prompt([
@@ -500,24 +500,24 @@ export class LinearLabelSelector {
 
 		// Creation summary
 		if (creationResults.created.length > 0) {
-			console.log(`\\n🆕 Created Labels: ${creationResults.created.length}`);
+			console.log(`\n🆕 Created Labels: ${creationResults.created.length}`);
 			creationResults.created.forEach((result) => {
 				console.log(`   • ${result.label.name} (${result.category})`);
 			});
 		}
 
 		if (creationResults.errors.length > 0) {
-			console.log(`\\n❌ Failed to Create: ${creationResults.errors.length}`);
+			console.log(`\n❌ Failed to Create: ${creationResults.errors.length}`);
 			creationResults.errors.forEach((error) => {
 				console.log(`   • ${error.config.name}: ${error.error}`);
 			});
 		}
 
 		// Configuration file location
-		console.log(`\\n📁 Configuration saved to:`);
+		console.log(`\n📁 Configuration saved to:`);
 		console.log(`   ${this.labelManager.labelSetsPath}`);
 
-		console.log(`\\n💡 Next Steps:`);
+		console.log(`\n💡 Next Steps:`);
 		console.log(
 			`   • Run the setup wizard again to detect changes: npm run setup`
 		);

@@ -2,37 +2,13 @@
 	"meta": {
 		"generatedAt": "2025-06-26T10:00:52.108Z",
 		"tasksAnalyzed": 32,
-		"totalTasks": 37,
-		"analysisCount": 35,
+		"totalTasks": 32,
+		"analysisCount": 32,
 		"thresholdScore": 4,
 		"projectName": "Task Master",
 		"usedResearch": true
 	},
 	"complexityAnalysis": [
-		{
-			"taskId": 37,
-			"taskTitle": "Implement Sync Status Audit Command",
-			"complexityScore": 5,
-			"recommendedSubtasks": 6,
-			"expansionPrompt": "Expand into: 1) Create sync-status command structure, 2) Implement Linear issue verification, 3) Build status comparison logic, 4) Detect orphaned issues, 5) Create discrepancy reporting, 6) Add auto-fix capabilities for simple issues",
-			"reasoning": "Diagnostic tool with comparison logic and reporting. Auto-fix capabilities add moderate complexity."
-		},
-		{
-			"taskId": 39,
-			"taskTitle": "Prepare Production Release and Deployment",
-			"complexityScore": 6,
-			"recommendedSubtasks": 8,
-			"expansionPrompt": "Expand into: 1) Conduct final code review, 2) Update version and changelogs, 3) Create release notes, 4) Package distribution artifacts, 5) Set up release automation, 6) Create onboarding materials, 7) Plan rollout strategy, 8) Set up production monitoring",
-			"reasoning": "Release preparation with multiple deliverables and production considerations. Rollout strategy and monitoring setup add complexity."
-		},
-		{
-			"taskId": 40,
-			"taskTitle": "Implement Git Integration Proof of Concept",
-			"complexityScore": 5,
-			"recommendedSubtasks": 6,
-			"expansionPrompt": "Break down to: 1) Create GitIntegration plugin structure, 2) Implement branch creation on status change, 3) Add working directory safety checks, 4) Integrate simple-git library, 5) Create opt-in configuration, 6) Document as plugin example",
-			"reasoning": "Proof of concept with git operations and safety checks. Serves as example for plugin architecture, adding documentation requirements."
-		},
 		{
 			"taskId": 6,
 			"taskTitle": "Implement Linear Workflow State Mapping",

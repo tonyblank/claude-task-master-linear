@@ -217,12 +217,13 @@ export function extractFilePathsFromContent(content) {
 	const filePaths = new Set();
 
 	for (const pattern of patterns) {
-		let match;
-		while ((match = pattern.exec(content)) !== null) {
+		let match = pattern.exec(content);
+		while (match !== null) {
 			const path = match[1].trim();
 			if (path && path.length > 1) {
 				filePaths.add(path);
 			}
+			match = pattern.exec(content);
 		}
 	}
 

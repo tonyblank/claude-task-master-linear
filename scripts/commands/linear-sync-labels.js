@@ -21,31 +21,12 @@ import { linearSyncLabels } from '../linear-sync-labels.js';
  * Following the integration command pattern: {integration}-{command-name}
  */
 export async function linearSyncLabelsCommand(options) {
-	// Set up process.argv to match what the main function expects
-	const originalArgv = process.argv.slice();
-
 	try {
-		const syncArgs = ['node', 'linear-sync-labels'];
-
-		// Map command options to CLI arguments
-		if (options.dryRun) syncArgs.push('--dry-run');
-		if (options.resolveConflicts) syncArgs.push('--resolve-conflicts');
-		if (options.projectRoot)
-			syncArgs.push('--project-root', options.projectRoot);
-		if (options.teamId) syncArgs.push('--team-id', options.teamId);
-		if (options.force) syncArgs.push('--force');
-		if (options.verbose) syncArgs.push('--verbose');
-
-		process.argv = syncArgs;
-
-		// Execute the main sync function
-		await linearSyncLabels();
+		// Execute the main sync function with proper options object
+		await linearSyncLabels(options);
 	} catch (error) {
 		console.error(`Label sync command failed: ${error.message}`);
-		process.exit(1);
-	} finally {
-		// Always restore original argv
-		process.argv = originalArgv;
+		throw error;
 	}
 }
 

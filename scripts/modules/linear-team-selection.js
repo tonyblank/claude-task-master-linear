@@ -496,7 +496,7 @@ export class LinearTeamSelector {
 				}
 
 				if (attempt < this.config.maxRetries) {
-					const delay = this.config.retryDelay * Math.pow(2, attempt - 1);
+					const delay = this.config.retryDelay * 2 ** (attempt - 1);
 					log(
 						'warn',
 						`${operationName} attempt ${attempt} failed, retrying in ${delay}ms: ${error.message}`
