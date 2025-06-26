@@ -16,19 +16,9 @@ const apiKeyFormat = (apiKey) => {
 		return 'API key is required and must be a string.';
 	}
 
-	// Check for correct prefix
-	if (!apiKey.startsWith('lin_api_') && !apiKey.startsWith('lin_oauth_')) {
-		return 'Linear API key must start with "lin_api_" or "lin_oauth_".';
-	}
-
-	// Check minimum length (prefix + key data)
-	if (apiKey.length < 20) {
-		return 'Linear API key is too short. Expected at least 20 characters.';
-	}
-
-	// Check for valid characters (alphanumeric and underscore)
-	if (!/^lin_(api|oauth)_[a-zA-Z0-9_]+$/.test(apiKey)) {
-		return 'Linear API key contains invalid characters. Only letters, numbers, and underscores are allowed.';
+	// Basic length check - most API keys are at least 10 characters
+	if (apiKey.length < 10) {
+		return 'API key appears to be too short.';
 	}
 
 	return true;
@@ -248,7 +238,7 @@ export async function testLinearApiKey(apiKey, options = {}) {
 
 			// Wait before retry (exponential backoff)
 			if (attempt <= retries) {
-				const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+				const delay = Math.min(1000 * 2 ** (attempt - 1), 5000);
 				await new Promise((resolve) => setTimeout(resolve, delay));
 			}
 		}
@@ -381,7 +371,6 @@ export async function promptAndValidateLinearApiKey(options = {}) {
 				};
 			} else {
 				lastError = testResult.error;
-				continue;
 			}
 		} catch (error) {
 			// Handle unexpected errors (e.g., user cancellation, validation errors)

@@ -846,7 +846,9 @@ export class LinearLabelManager {
 			Object.entries(config.categories).forEach(([categoryKey, category]) => {
 				if (category.labels) {
 					Object.entries(category.labels).forEach(([labelKey, labelConfig]) => {
-						if (!labelConfig.hasOwnProperty('linearId')) {
+						if (
+							!Object.prototype.hasOwnProperty.call(labelConfig, 'linearId')
+						) {
 							needsMigration = true;
 							migrationCount++;
 						}
@@ -874,7 +876,9 @@ export class LinearLabelManager {
 			Object.entries(config.categories).forEach(([categoryKey, category]) => {
 				if (category.labels) {
 					Object.entries(category.labels).forEach(([labelKey, labelConfig]) => {
-						if (!labelConfig.hasOwnProperty('linearId')) {
+						if (
+							!Object.prototype.hasOwnProperty.call(labelConfig, 'linearId')
+						) {
 							labelConfig.linearId = null;
 						}
 					});

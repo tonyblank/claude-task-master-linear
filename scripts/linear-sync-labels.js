@@ -52,9 +52,17 @@ function parseArgs() {
 				options.resolveConflicts = true;
 				break;
 			case '--project-root':
+				if (i + 1 >= args.length) {
+					console.error('--project-root requires a value');
+					process.exit(1);
+				}
 				options.projectRoot = args[++i];
 				break;
 			case '--team-id':
+				if (i + 1 >= args.length) {
+					console.error('--team-id requires a value');
+					process.exit(1);
+				}
 				options.teamId = args[++i];
 				break;
 			case '--force':

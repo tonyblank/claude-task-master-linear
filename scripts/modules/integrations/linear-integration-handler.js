@@ -1706,6 +1706,7 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			createIssues: this.config.createIssues !== false,
 			updateIssues: true,
 			syncStatus: true,
+			queryWorkflowStates: true,
 			bulkOperations: false,
 			webhooks: false
 		};
@@ -1724,6 +1725,528 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			createIssues: this.config.createIssues !== false,
 			enabled: this.isEnabled()
 		};
+	}
+
+	// =============================================================================
+	// WORKFLOW STATE MANAGEMENT
+	// =============================================================================
+
+	/**
+	 * Query Linear API for workflow states of a team
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} options - Query options
+	 * @param {boolean} options.includeArchived - Include archived states (default: false)
+	 * @param {number} options.pageSize - Page size for pagination (default: 100)
+	 * @param {boolean} options.useCache - Use cached results if available (default: true)
+	 * @returns {Promise<Object>} Workflow states data with pagination info
+	 */
+	async queryWorkflowStates(teamId, options = {}) {
+		const {
+			includeArchived = false,
+			pageSize = 100,
+			useCache = true
+		} = options;
+
+		// Check cache first if enabled
+		if (useCache) {
+			const cached = this._getWorkflowStatesFromCache(teamId);
+			if (cached) {
+				log('debug', `Using cached workflow states for team ${teamId}`);
+				return cached;
+			}
+		}
+
+		// Create progress message for operation start
+		const progressMessage = this.createProgressMessage(
+			'queryWorkflowStates',
+			{ id: 'workflow-states', title: `Team ${teamId} workflow states` },
+			'querying'
+		);
+		this.logFormattedMessage(progressMessage);
+
+		try {
+			// Validate team ID format
+			if (!teamId || typeof teamId !== 'string') {
+				throw new Error('Team ID is required and must be a string');
+			}
+
+			// Update progress - fetching states
+			const fetchingProgress = this.createProgressMessage(
+				'queryWorkflowStates',
+				{ id: 'workflow-states', title: `Team ${teamId} workflow states` },
+				'fetching'
+			);
+			this.logFormattedMessage(fetchingProgress);
+
+			// Query Linear API for workflow states
+			const statesData = await this._fetchWorkflowStatesWithPagination(teamId, {
+				includeArchived,
+				pageSize
+			});
+
+			// Update progress - processing results
+			const processingProgress = this.createProgressMessage(
+				'queryWorkflowStates',
+				{ id: 'workflow-states', title: `Team ${teamId} workflow states` },
+				'processing'
+			);
+			this.logFormattedMessage(processingProgress);
+
+			// Process and validate the results
+			const processedStates = this._processWorkflowStatesResponse(statesData);
+
+			// Cache the results if successful
+			if (useCache && processedStates.states.length > 0) {
+				this._cacheWorkflowStates(teamId, processedStates);
+			}
+
+			// Create success message
+			const successMessage = this.createSuccessMessage(
+				'queryWorkflowStates',
+				{ id: 'workflow-states', title: `Team ${teamId} workflow states` },
+				{
+					identifier: `team-${teamId}-states`,
+					statesCount: processedStates.states.length,
+					teamId
+				}
+			);
+			this.logFormattedMessage(successMessage);
+
+			log(
+				'info',
+				`Successfully queried ${processedStates.states.length} workflow states for team ${teamId}`
+			);
+
+			return processedStates;
+		} catch (error) {
+			// Create error message
+			const errorMessage = this.createErrorMessage(
+				'queryWorkflowStates',
+				{ id: 'workflow-states', title: `Team ${teamId} workflow states` },
+				error
+			);
+			this.logFormattedMessage(errorMessage, true);
+
+			log(
+				'error',
+				`Failed to query workflow states for team ${teamId}:`,
+				error.message
+			);
+			throw error;
+		}
+	}
+
+	/**
+	 * Fetch workflow states with pagination handling
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} options - Fetch options
+	 * @returns {Promise<Object>} Raw workflow states data
+	 * @private
+	 */
+	async _fetchWorkflowStatesWithPagination(teamId, options = {}) {
+		const { includeArchived = false, pageSize = 100 } = options;
+		const allStates = [];
+		let hasNextPage = true;
+		let cursor = null;
+		let pageCount = 0;
+
+		while (hasNextPage && pageCount < 10) {
+			// Safety limit of 10 pages
+			try {
+				log(
+					'debug',
+					`Fetching workflow states page ${pageCount + 1} for team ${teamId}`
+				);
+
+				// Build the query parameters
+				const queryParams = {
+					first: pageSize,
+					filter: {
+						team: { id: { eq: teamId } },
+						...(includeArchived ? {} : { archivedAt: { null: true } })
+					}
+				};
+
+				// Add cursor for pagination
+				if (cursor) {
+					queryParams.after = cursor;
+				}
+
+				// Perform the Linear API request with retry logic
+				const statesResponse = await this._performLinearRequest(
+					() => this.linear.workflowStates(queryParams),
+					`fetch workflow states page ${pageCount + 1} for team ${teamId}`
+				);
+
+				// Validate response structure
+				if (!statesResponse || !statesResponse.nodes) {
+					throw new Error('Invalid workflow states response structure');
+				}
+
+				// Add states from this page
+				allStates.push(...statesResponse.nodes);
+
+				// Check if there are more pages
+				hasNextPage = statesResponse.pageInfo?.hasNextPage || false;
+				cursor = statesResponse.pageInfo?.endCursor || null;
+				pageCount++;
+
+				log(
+					'debug',
+					`Fetched ${statesResponse.nodes.length} workflow states from page ${pageCount}, hasNextPage: ${hasNextPage}`
+				);
+
+				// Add a small delay between pages to be API-friendly
+				if (hasNextPage) {
+					await new Promise((resolve) => setTimeout(resolve, 100));
+				}
+			} catch (error) {
+				log(
+					'error',
+					`Failed to fetch workflow states page ${pageCount + 1}:`,
+					error.message
+				);
+				throw error;
+			}
+		}
+
+		if (pageCount >= 10 && hasNextPage) {
+			log(
+				'warn',
+				`Reached maximum page limit (10) while fetching workflow states for team ${teamId}`
+			);
+		}
+
+		return {
+			states: allStates,
+			totalCount: allStates.length,
+			pageCount,
+			teamId
+		};
+	}
+
+	/**
+	 * Process and validate workflow states response
+	 *
+	 * @param {Object} statesData - Raw states data from API
+	 * @returns {Object} Processed workflow states
+	 * @private
+	 */
+	_processWorkflowStatesResponse(statesData) {
+		const { states, totalCount, pageCount, teamId } = statesData;
+
+		// Validate that we have states
+		if (!Array.isArray(states)) {
+			throw new Error('Invalid states data structure');
+		}
+
+		// Process each state
+		const processedStates = states
+			.map((state, index) => {
+				try {
+					// Validate required fields
+					if (!state.id || !state.name) {
+						log(
+							'warn',
+							`Workflow state ${index} missing required fields (id or name)`
+						);
+						return null;
+					}
+
+					return {
+						id: state.id,
+						name: state.name,
+						type: state.type || 'unstarted', // Linear state types: unstarted, started, completed, canceled
+						color: state.color || '#95a2b3',
+						position:
+							typeof state.position === 'number' ? state.position : index,
+						description: state.description || null,
+						team: state.team
+							? {
+									id: state.team.id,
+									name: state.team.name,
+									key: state.team.key
+								}
+							: null,
+						// Additional metadata
+						archivedAt: state.archivedAt || null,
+						createdAt: state.createdAt || null,
+						updatedAt: state.updatedAt || null
+					};
+				} catch (error) {
+					log(
+						'warn',
+						`Failed to process workflow state ${index}:`,
+						error.message
+					);
+					return null;
+				}
+			})
+			.filter((state) => state !== null); // Remove failed states
+
+		// Group states by type for easier consumption
+		const statesByType = processedStates.reduce((acc, state) => {
+			if (!acc[state.type]) {
+				acc[state.type] = [];
+			}
+			acc[state.type].push(state);
+			return acc;
+		}, {});
+
+		// Sort states by position within each type
+		Object.keys(statesByType).forEach((type) => {
+			statesByType[type].sort((a, b) => a.position - b.position);
+		});
+
+		// Create name-to-ID mapping for quick lookups
+		const stateNameMap = processedStates.reduce((acc, state) => {
+			// Support both exact and normalized name lookups
+			acc[state.name] = state.id;
+			acc[state.name.toLowerCase()] = state.id;
+			acc[state.name.toLowerCase().replace(/[^a-z0-9]/g, '')] = state.id;
+			return acc;
+		}, {});
+
+		return {
+			states: processedStates,
+			statesByType,
+			stateNameMap,
+			metadata: {
+				totalCount: processedStates.length,
+				originalCount: totalCount,
+				pageCount,
+				teamId,
+				fetchedAt: new Date().toISOString(),
+				types: Object.keys(statesByType)
+			}
+		};
+	}
+
+	/**
+	 * Get workflow states from cache
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @returns {Object|null} Cached workflow states or null
+	 * @private
+	 */
+	_getWorkflowStatesFromCache(teamId) {
+		if (!this._workflowStatesCache) {
+			this._workflowStatesCache = new Map();
+		}
+
+		const cached = this._workflowStatesCache.get(teamId);
+		if (!cached) {
+			return null;
+		}
+
+		// Check if cache is still valid (5 minutes TTL)
+		const cacheAge = Date.now() - cached.cachedAt;
+		const maxAge = 5 * 60 * 1000; // 5 minutes
+
+		if (cacheAge > maxAge) {
+			log(
+				'debug',
+				`Workflow states cache expired for team ${teamId} (age: ${Math.round(cacheAge / 1000)}s)`
+			);
+			this._workflowStatesCache.delete(teamId);
+			return null;
+		}
+
+		log(
+			'debug',
+			`Using cached workflow states for team ${teamId} (age: ${Math.round(cacheAge / 1000)}s)`
+		);
+		return cached.data;
+	}
+
+	/**
+	 * Cache workflow states data
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} statesData - Processed workflow states data
+	 * @private
+	 */
+	_cacheWorkflowStates(teamId, statesData) {
+		if (!this._workflowStatesCache) {
+			this._workflowStatesCache = new Map();
+		}
+
+		// Limit cache size to prevent memory issues
+		if (this._workflowStatesCache.size >= 50) {
+			// Remove oldest entry
+			const firstKey = this._workflowStatesCache.keys().next().value;
+			this._workflowStatesCache.delete(firstKey);
+			log(
+				'debug',
+				`Workflow states cache size limit reached, removed oldest entry: ${firstKey}`
+			);
+		}
+
+		this._workflowStatesCache.set(teamId, {
+			data: statesData,
+			cachedAt: Date.now()
+		});
+
+		log(
+			'debug',
+			`Cached workflow states for team ${teamId} (${statesData.states.length} states)`
+		);
+	}
+
+	/**
+	 * Clear workflow states cache for a team or all teams
+	 *
+	 * @param {string} [teamId] - Specific team ID to clear, or null to clear all
+	 */
+	clearWorkflowStatesCache(teamId = null) {
+		if (!this._workflowStatesCache) {
+			return;
+		}
+
+		if (teamId) {
+			this._workflowStatesCache.delete(teamId);
+			log('debug', `Cleared workflow states cache for team ${teamId}`);
+		} else {
+			this._workflowStatesCache.clear();
+			log('debug', 'Cleared all workflow states cache');
+		}
+	}
+
+	/**
+	 * Get workflow state by name with fuzzy matching
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} stateName - State name to find
+	 * @param {Object} options - Search options
+	 * @returns {Promise<Object|null>} Matching workflow state or null
+	 */
+	async findWorkflowStateByName(teamId, stateName, options = {}) {
+		const { fuzzyMatch = true, useCache = true } = options;
+
+		try {
+			// Get workflow states for the team
+			const statesData = await this.queryWorkflowStates(teamId, { useCache });
+
+			if (!statesData || !statesData.stateNameMap) {
+				return null;
+			}
+
+			// Try exact match first
+			let stateId = statesData.stateNameMap[stateName];
+			if (stateId) {
+				return statesData.states.find((state) => state.id === stateId);
+			}
+
+			// Try case-insensitive match
+			stateId = statesData.stateNameMap[stateName.toLowerCase()];
+			if (stateId) {
+				return statesData.states.find((state) => state.id === stateId);
+			}
+
+			// Try normalized match (remove special characters)
+			const normalizedName = stateName.toLowerCase().replace(/[^a-z0-9]/g, '');
+			stateId = statesData.stateNameMap[normalizedName];
+			if (stateId) {
+				return statesData.states.find((state) => state.id === stateId);
+			}
+
+			// Try fuzzy matching if enabled
+			if (fuzzyMatch) {
+				const fuzzyMatch = this._findFuzzyWorkflowStateMatch(
+					statesData.states,
+					stateName
+				);
+				if (fuzzyMatch) {
+					log(
+						'debug',
+						`Found fuzzy match for "${stateName}": "${fuzzyMatch.name}"`
+					);
+					return fuzzyMatch;
+				}
+			}
+
+			return null;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to find workflow state "${stateName}" for team ${teamId}:`,
+				error.message
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Find fuzzy workflow state match using similarity scoring
+	 *
+	 * @param {Array} states - Array of workflow states
+	 * @param {string} targetName - Target state name to match
+	 * @returns {Object|null} Best matching state or null
+	 * @private
+	 */
+	_findFuzzyWorkflowStateMatch(states, targetName) {
+		if (!states || !Array.isArray(states) || !targetName) {
+			return null;
+		}
+
+		const target = targetName.toLowerCase();
+		let bestMatch = null;
+		let bestScore = 0;
+
+		for (const state of states) {
+			const stateName = state.name.toLowerCase();
+
+			// Calculate similarity score
+			let score = 0;
+
+			// Exact substring match gets high score
+			if (stateName.includes(target) || target.includes(stateName)) {
+				score += 0.8;
+			}
+
+			// Word-based matching
+			const targetWords = target.split(/\s+/);
+			const stateWords = stateName.split(/\s+/);
+
+			const matchingWords = targetWords.filter((word) =>
+				stateWords.some(
+					(stateWord) => stateWord.includes(word) || word.includes(stateWord)
+				)
+			);
+
+			score +=
+				(matchingWords.length /
+					Math.max(targetWords.length, stateWords.length)) *
+				0.6;
+
+			// Common abbreviations and patterns
+			const commonMappings = {
+				todo: ['todo', 'to do', 'backlog', 'new'],
+				progress: ['in progress', 'active', 'working', 'started'],
+				review: ['in review', 'review', 'pending review'],
+				done: ['done', 'completed', 'finished', 'closed'],
+				cancelled: ['cancelled', 'canceled', 'rejected']
+			};
+
+			for (const [key, variations] of Object.entries(commonMappings)) {
+				if (target.includes(key)) {
+					if (variations.some((variation) => stateName.includes(variation))) {
+						score += 0.7;
+					}
+				}
+			}
+
+			// Update best match if this score is higher
+			if (score > bestScore && score > 0.5) {
+				// Minimum threshold of 0.5
+				bestScore = score;
+				bestMatch = state;
+			}
+		}
+
+		return bestMatch;
 	}
 
 	// =============================================================================
@@ -1825,6 +2348,28 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 					},
 					logMessage: `Task #${task.id} synchronized with Linear issue ${linearData.identifier}`,
 					userMessage: `🔄 Task #${task.id} synchronized with Linear`
+				};
+
+			case 'queryWorkflowStates':
+				return {
+					...baseMessage,
+					title: '✅ Workflow States Retrieved Successfully',
+					message: `Successfully retrieved ${linearData.statesCount} workflow states for team ${linearData.teamId}`,
+					details: {
+						teamId: linearData.teamId,
+						statesCount: linearData.statesCount,
+						identifier: linearData.identifier,
+						retrievedAt: timestamp
+					},
+					actions: {
+						viewStates: {
+							text: 'View States in Linear',
+							url: `https://linear.app/team/${linearData.teamId}/settings/workflow`,
+							primary: true
+						}
+					},
+					logMessage: `Successfully retrieved ${linearData.statesCount} workflow states for team ${linearData.teamId}`,
+					userMessage: `📋 Retrieved ${linearData.statesCount} workflow states for Linear team`
 				};
 
 			default:
@@ -2290,6 +2835,21 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 		const taskTitle =
 			task.title.length > 30 ? task.title.substring(0, 30) + '...' : task.title;
 
+		// Handle workflow states operations differently
+		if (operationType === 'queryWorkflowStates') {
+			switch (stage) {
+				case 'querying':
+					return `Preparing to query workflow states`;
+				case 'fetching':
+					return `Fetching workflow states from Linear API`;
+				case 'processing':
+					return `Processing and validating workflow states`;
+				default:
+					return `Querying workflow states from Linear`;
+			}
+		}
+
+		// Handle regular task operations
 		switch (stage) {
 			case 'validating':
 				return `Validating task data for "${taskTitle}"`;

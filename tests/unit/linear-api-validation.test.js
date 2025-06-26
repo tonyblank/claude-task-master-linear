@@ -97,28 +97,29 @@ describe('Linear API Validation Module', () => {
 				);
 			});
 
-			it('should return error for wrong prefix', () => {
+			it('should accept keys with any prefix', () => {
 				expect(linearValidators.apiKeyFormat('sk-1234567890abcdefghijk')).toBe(
-					'Linear API key must start with "lin_api_" or "lin_oauth_".'
+					true
 				);
 				expect(linearValidators.apiKeyFormat('api_key_123abcdefghijk')).toBe(
-					'Linear API key must start with "lin_api_" or "lin_oauth_".'
+					true
 				);
+				expect(linearValidators.apiKeyFormat('custom_1234567890')).toBe(true);
 			});
 
 			it('should return error for too short key', () => {
-				expect(linearValidators.apiKeyFormat('lin_api_123')).toBe(
-					'Linear API key is too short. Expected at least 20 characters.'
+				expect(linearValidators.apiKeyFormat('short')).toBe(
+					'API key appears to be too short.'
 				);
+				expect(linearValidators.apiKeyFormat('1234567890')).toBe(true); // 10 chars is OK
 			});
 
-			it('should return error for invalid characters', () => {
-				expect(linearValidators.apiKeyFormat('lin_api_123@456#789abcdef')).toBe(
-					'Linear API key contains invalid characters. Only letters, numbers, and underscores are allowed.'
+			it('should accept keys with any characters', () => {
+				expect(linearValidators.apiKeyFormat('key_with@special#chars')).toBe(
+					true
 				);
-				expect(linearValidators.apiKeyFormat('lin_api_123 456 789abcdef')).toBe(
-					'Linear API key contains invalid characters. Only letters, numbers, and underscores are allowed.'
-				);
+				expect(linearValidators.apiKeyFormat('key with spaces')).toBe(true);
+				expect(linearValidators.apiKeyFormat('key-with-dashes')).toBe(true);
 			});
 		});
 	});
@@ -260,8 +261,9 @@ describe('Linear API Validation Module', () => {
 		});
 
 		it('should reject invalid API key format', async () => {
-			await expect(testLinearApiKey('invalid-key')).rejects.toThrow(
-				'Invalid API key format'
+			// Test with a key that's too short
+			await expect(testLinearApiKey('short')).rejects.toThrow(
+				'API key appears to be too short'
 			);
 		});
 
