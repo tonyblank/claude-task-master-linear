@@ -307,38 +307,13 @@ Output Requirements:
 
 		const updatedSubtask = parentTask.subtasks[subtaskIndex];
 
-		if (outputFormat === 'text' && getDebugFlag(session)) {
-			console.log(
-				'>>> DEBUG: Subtask details AFTER AI update:',
-				updatedSubtask.details
-			);
-		}
-
 		if (updatedSubtask.description) {
 			if (prompt.length < 100) {
-				if (outputFormat === 'text' && getDebugFlag(session)) {
-					console.log(
-						'>>> DEBUG: Subtask description BEFORE append:',
-						updatedSubtask.description
-					);
-				}
 				updatedSubtask.description += ` [Updated: ${new Date().toLocaleDateString()}]`;
-				if (outputFormat === 'text' && getDebugFlag(session)) {
-					console.log(
-						'>>> DEBUG: Subtask description AFTER append:',
-						updatedSubtask.description
-					);
-				}
 			}
 		}
 
-		if (outputFormat === 'text' && getDebugFlag(session)) {
-			console.log('>>> DEBUG: About to call writeJSON with updated data...');
-		}
 		writeJSON(tasksPath, data, projectRoot, currentTag);
-		if (outputFormat === 'text' && getDebugFlag(session)) {
-			console.log('>>> DEBUG: writeJSON call completed.');
-		}
 
 		report('success', `Successfully updated subtask ${subtaskId}`);
 		// await generateTaskFiles(tasksPath, path.dirname(tasksPath));

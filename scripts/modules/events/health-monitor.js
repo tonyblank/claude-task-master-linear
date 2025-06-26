@@ -271,6 +271,8 @@ export class HealthMonitor {
 		} catch (error) {
 			// Handle circuit breaker registry errors gracefully
 			log('warn', 'Failed to check circuit breaker health:', error);
+			circuitBreakerStatuses = {}; // Ensure variable is always initialized
+			unhealthyBreakers = [];
 		}
 
 		// Update cached result

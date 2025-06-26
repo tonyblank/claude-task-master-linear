@@ -45,7 +45,6 @@ function resolveEnvVariable(key, session = null, projectRoot = null) {
 				const envFileContent = fs.readFileSync(envPath, 'utf-8');
 				const parsedEnv = dotenv.parse(envFileContent); // Use dotenv to parse
 				if (parsedEnv && parsedEnv[key]) {
-					// console.log(`DEBUG: Found key ${key} in ${envPath}`); // Optional debug log
 					return parsedEnv[key];
 				}
 			} catch (error) {
@@ -67,6 +66,7 @@ function resolveEnvVariable(key, session = null, projectRoot = null) {
 // --- Project Root Finding Utility ---
 /**
  * Recursively searches upwards for project root starting from a given directory.
+ * Special handling for Docker container environments to ensure proper volume mounting.
  * @param {string} [startDir=process.cwd()] - The directory to start searching from.
  * @param {string[]} [markers=['package.json', '.git', LEGACY_CONFIG_FILE]] - Marker files/dirs to look for.
  * @returns {string|null} The path to the project root, or null if not found.
@@ -78,6 +78,59 @@ function findProjectRoot(
 	let currentPath = path.resolve(startDir);
 	const rootPath = path.parse(currentPath).root;
 
+	// Special Docker container detection and handling
+	const isInContainer =
+		process.cwd() === '/app' || process.env.DOCKER_CONTAINER;
+
+	if (isInContainer) {
+		console.log(
+			'🐳 Container environment detected, checking for volume mounts...'
+		);
+
+		// Enhanced markers for container environments
+		const containerMarkers = [...markers, '.taskmaster', 'CLAUDE.md'];
+
+		// Check common volume mount paths that map to host machine
+		const possibleVolumePaths = [
+			'/workspace', // Common volume mount path
+			'/project', // Alternative volume mount path
+			'/src', // Source code mount path
+			'/code', // Code mount path
+			'/app', // Current container path
+			currentPath // Fallback to original logic
+		];
+
+		for (const volumePath of possibleVolumePaths) {
+			if (fs.existsSync(volumePath)) {
+				// Check if this path has the project indicators
+				const markerResults = containerMarkers.map((marker) => {
+					const exists = fs.existsSync(path.join(volumePath, marker));
+					return { marker, exists };
+				});
+
+				const hasMarkers = markerResults.filter((r) => r.exists);
+
+				console.log(`  Checking ${volumePath}:`);
+				markerResults.forEach((r) => {
+					console.log(`    - ${r.marker}: ${r.exists}`);
+				});
+
+				if (hasMarkers.length > 0) {
+					console.log(
+						`  ✅ Using volume path: ${volumePath} (found ${hasMarkers.length} markers)`
+					);
+					return volumePath;
+				}
+			}
+		}
+
+		console.log('  ⚠️  No proper volume mount found, using container path /app');
+		console.log(
+			'  💡 Consider mounting your project root to /workspace for better integration'
+		);
+	}
+
+	// Original logic for non-container environments
 	while (currentPath !== rootPath) {
 		// Check if any marker exists in the current directory
 		const hasMarker = markers.some((marker) => {
@@ -553,9 +606,6 @@ function createStateJson(statePath) {
 		};
 
 		fs.writeFileSync(statePath, JSON.stringify(initialState, null, 2), 'utf8');
-		if (process.env.TASKMASTER_DEBUG === 'true') {
-			console.log('[DEBUG] Created initial state.json for tagged task system');
-		}
 	} catch (error) {
 		if (process.env.TASKMASTER_DEBUG === 'true') {
 			console.warn(`[WARN] Error creating state.json: ${error.message}`);

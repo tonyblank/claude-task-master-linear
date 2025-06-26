@@ -27,51 +27,7 @@
 		"projectName": "Task Master",
 		"ollamaBaseURL": "${OLLAMA_BASE_URL:-http://localhost:11434/api}",
 		"bedrockBaseURL": "${BEDROCK_BASE_URL:-https://bedrock.us-east-1.amazonaws.com}",
-		"userId": "${USER_ID}"
-	},
-	"integrations": {
-		"linear": {
-			"enabled": false,
-			"apiKey": "${LINEAR_API_KEY}",
-			"team": {
-				"id": null,
-				"name": null
-			},
-			"project": {
-				"id": null,
-				"name": null
-			},
-			"labels": {
-				"enabled": true,
-				"sourceLabel": "taskmaster",
-				"priorityMapping": {
-					"high": "High Priority",
-					"medium": "Medium Priority",
-					"low": "Low Priority"
-				},
-				"statusMapping": {
-					"pending": "Todo",
-					"in-progress": "In Progress",
-					"review": "In Review",
-					"done": "Done",
-					"cancelled": "Cancelled",
-					"deferred": "Backlog"
-				}
-			},
-			"sync": {
-				"autoSync": true,
-				"syncOnStatusChange": true,
-				"syncSubtasks": true,
-				"syncDependencies": true,
-				"batchSize": 10,
-				"retryAttempts": 3,
-				"retryDelay": 1000
-			},
-			"webhooks": {
-				"enabled": false,
-				"url": null,
-				"secret": null
-			}
-		}
+		"userId": "${USER_ID}",
+		"defaultTag": "master"
 	}
 }

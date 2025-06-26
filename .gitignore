@@ -9,6 +9,13 @@ jspm_packages/
 .env.test.local
 .env.production.local
 
+# Environment backups (contain secrets!)
+.env.backup*
+.env.bak*
+*.env.backup
+*.env.bak
+.taskmaster/backups/env-backup-*
+
 # Cursor configuration -- might have ENV variables. Included by default
 # .cursor/mcp.json
 
