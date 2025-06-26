@@ -1,0 +1,151 @@
+{
+	"version": "1.0.0",
+	"enabled": true,
+	"team": {
+		"id": "0c581c9a-750a-4bfe-bec3-c7021606c674",
+		"name": "BurningTorch"
+	},
+	"project": {
+		"id": "5472897f-b3c7-468c-9de0-5587f7478fd8",
+		"name": "Claude Task Master Linear"
+	},
+	"labels": {
+		"categories": {
+			"core": {
+				"enabled": true,
+				"description": "Essential TaskMaster labels",
+				"autoApply": true,
+				"labels": {
+					"taskmaster": {
+						"name": "taskmaster",
+						"description": "Issue managed by TaskMaster",
+						"color": "#6366f1",
+						"linearId": null
+					}
+				}
+			},
+			"types": {
+				"enabled": true,
+				"description": "Issue type classification labels",
+				"autoApply": false,
+				"autoSuggest": true,
+				"labels": {
+					"bug": {
+						"name": "Bug",
+						"description": "Something isn't working",
+						"color": "#d73a49",
+						"linearId": null
+					},
+					"feature": {
+						"name": "Feature",
+						"description": "New functionality or enhancement",
+						"color": "#28a745",
+						"linearId": null
+					},
+					"improvement": {
+						"name": "Improvement",
+						"description": "Enhancement to existing functionality",
+						"color": "#007bff",
+						"linearId": null
+					},
+					"documentation": {
+						"name": "Documentation",
+						"description": "Improvements or additions to documentation",
+						"color": "#6f42c1",
+						"linearId": null
+					},
+					"refactor": {
+						"name": "Refactor",
+						"description": "Code improvement without changing functionality",
+						"color": "#fd7e14",
+						"linearId": null
+					}
+				}
+			},
+			"languages": {
+				"enabled": false,
+				"description": "Programming language labels for filtering",
+				"autoApply": false,
+				"autoDetect": false,
+				"labels": {
+					"javascript": {
+						"name": "JavaScript",
+						"description": "JavaScript related tasks",
+						"color": "#F0DB4F",
+						"linearId": null
+					},
+					"typescript": {
+						"name": "TypeScript",
+						"description": "TypeScript related tasks",
+						"color": "#3178C6",
+						"linearId": null
+					},
+					"python": {
+						"name": "Python",
+						"description": "Python related tasks",
+						"color": "#4B8BBE",
+						"linearId": null
+					},
+					"java": {
+						"name": "Java",
+						"description": "Java related tasks",
+						"color": "#ED8B00",
+						"linearId": null
+					},
+					"go": {
+						"name": "Go",
+						"description": "Go related tasks",
+						"color": "#00ADD8",
+						"linearId": null
+					},
+					"rust": {
+						"name": "Rust",
+						"description": "Rust related tasks",
+						"color": "#CE422B",
+						"linearId": null
+					}
+				}
+			}
+		},
+		"automation": {
+			"autoApplyTaskmaster": true,
+			"autoApplyLanguages": false,
+			"syncOnStatusChange": true
+		}
+	},
+	"sync": {
+		"mode": "one-way",
+		"createMissing": false,
+		"updateExisting": false,
+		"deleteUnused": false,
+		"batchSize": 10,
+		"retryAttempts": 3,
+		"retryDelay": 1000
+	},
+	"mappings": {
+		"priority": {
+			"high": "High Priority",
+			"medium": "Medium Priority",
+			"low": "Low Priority"
+		},
+		"status": {
+			"pending": "Todo",
+			"in-progress": "In Progress",
+			"review": "In Review",
+			"done": "Done",
+			"cancelled": "Cancelled",
+			"deferred": "Backlog"
+		}
+	},
+	"webhooks": {
+		"enabled": false,
+		"url": null,
+		"secret": null
+	},
+	"metadata": {
+		"createdAt": "2025-06-26T09:34:10.055Z",
+		"createdBy": "taskmaster-linear-wizard",
+		"lastUpdated": "2025-06-26T09:34:10.056Z",
+		"lastSync": null
+	}
+}

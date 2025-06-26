@@ -8,7 +8,8 @@ import { readFileSync, writeFileSync, existsSync } from 'fs';
 // Mock dependencies first
 const mockLinearClient = {
 	project: jest.fn(),
-	labelCreate: jest.fn()
+	teamLabelCreate: jest.fn(),
+	teams: jest.fn()
 };
 
 const MockLinearClient = jest.fn().mockImplementation(() => mockLinearClient);
@@ -75,7 +76,8 @@ describe('LinearLabelManager', () => {
 		jest.clearAllMocks();
 		MockLinearClient.mockClear();
 		mockLinearClient.project.mockClear();
-		mockLinearClient.labelCreate.mockClear();
+		mockLinearClient.teamLabelCreate.mockClear();
+		mockLinearClient.teams.mockClear();
 		Object.values(mockMessages).forEach((mock) => mock.mockClear());
 
 		// Clear fs mocks
@@ -133,10 +135,13 @@ describe('LinearLabelManager', () => {
 		it('should load valid configuration file', () => {
 			const mockConfigData = {
 				version: '1.0.0',
-				categories: {
-					core: {
-						enabled: true,
-						labels: {}
+				enabled: true,
+				labels: {
+					categories: {
+						core: {
+							enabled: true,
+							labels: {}
+						}
 					}
 				}
 			};
@@ -147,9 +152,10 @@ describe('LinearLabelManager', () => {
 			const manager = new LinearLabelManager(mockConfig);
 			const config = manager.loadLabelSetsConfig();
 
-			expect(config).toEqual(mockConfigData);
+			// Should return just the labels portion
+			expect(config).toEqual(mockConfigData.labels);
 			expect(mockReadFileSync).toHaveBeenCalledWith(
-				'/test/project/.taskmaster/config/label-sets.json',
+				'/test/project/.taskmaster/linear-config.json',
 				'utf8'
 			);
 		});
@@ -160,7 +166,7 @@ describe('LinearLabelManager', () => {
 			const manager = new LinearLabelManager(mockConfig);
 
 			expect(() => manager.loadLabelSetsConfig()).toThrow(
-				'Label sets configuration not found'
+				'Linear configuration not found at: /test/project/.taskmaster/linear-config.json'
 			);
 		});
 
@@ -170,9 +176,7 @@ describe('LinearLabelManager', () => {
 
 			const manager = new LinearLabelManager(mockConfig);
 
-			expect(() => manager.loadLabelSetsConfig()).toThrow(
-				'Failed to load label sets config'
-			);
+			expect(() => manager.loadLabelSetsConfig()).toThrow();
 		});
 
 		it('should throw error if config has invalid structure', () => {
@@ -182,7 +186,7 @@ describe('LinearLabelManager', () => {
 			const manager = new LinearLabelManager(mockConfig);
 
 			expect(() => manager.loadLabelSetsConfig()).toThrow(
-				'Invalid label sets configuration: missing categories'
+				'Invalid Linear configuration: missing labels.categories'
 			);
 		});
 	});
@@ -190,16 +194,39 @@ describe('LinearLabelManager', () => {
 	describe('saveLabelSetsConfig', () => {
 		it('should save configuration with updated metadata', () => {
 			const configToSave = {
-				version: '1.0.0',
-				categories: {},
+				categories: {
+					core: {
+						enabled: true,
+						labels: {}
+					}
+				},
 				metadata: {}
 			};
+
+			// Mock the initial read of the full config
+			const existingFullConfig = {
+				version: '1.0.0',
+				enabled: true,
+				labels: {
+					categories: {
+						old: {
+							enabled: false,
+							labels: {}
+						}
+					}
+				},
+				metadata: {
+					createdAt: '2023-01-01T00:00:00.000Z'
+				}
+			};
+
+			mockReadFileSync.mockReturnValue(JSON.stringify(existingFullConfig));
 
 			const manager = new LinearLabelManager(mockConfig);
 			manager.saveLabelSetsConfig(configToSave);
 
 			expect(mockWriteFileSync).toHaveBeenCalledWith(
-				'/test/project/.taskmaster/config/label-sets.json',
+				'/test/project/.taskmaster/linear-config.json',
 				expect.stringContaining('"lastUpdated"'),
 				'utf8'
 			);
@@ -208,17 +235,27 @@ describe('LinearLabelManager', () => {
 			const savedData = JSON.parse(mockWriteFileSync.mock.calls[0][1]);
 			expect(savedData.metadata.lastUpdated).toBeDefined();
 			expect(savedData.metadata.version).toBe('1.0.0');
+			expect(savedData.labels.categories).toEqual(configToSave.categories);
 		});
 
 		it('should handle save errors', () => {
+			// Mock the initial read of the full config
+			const existingFullConfig = {
+				version: '1.0.0',
+				enabled: true,
+				labels: { categories: {} },
+				metadata: {}
+			};
+
+			mockReadFileSync.mockReturnValue(JSON.stringify(existingFullConfig));
 			mockWriteFileSync.mockImplementation(() => {
 				throw new Error('Write failed');
 			});
 
 			const manager = new LinearLabelManager(mockConfig);
 
-			expect(() => manager.saveLabelSetsConfig({})).toThrow(
-				'Failed to save label sets config'
+			expect(() => manager.saveLabelSetsConfig({ categories: {} })).toThrow(
+				'Failed to save Linear config'
 			);
 		});
 	});
@@ -251,7 +288,7 @@ describe('LinearLabelManager', () => {
 		});
 
 		it('should fetch labels successfully', async () => {
-			const mockProject = {
+			const mockTeam = {
 				labels: jest.fn().mockResolvedValue({
 					nodes: [
 						{
@@ -270,6 +307,10 @@ describe('LinearLabelManager', () => {
 						}
 					]
 				})
+			};
+
+			const mockProject = {
+				team: mockTeam
 			};
 
 			mockLinearClient.project.mockResolvedValue(mockProject);
@@ -297,7 +338,7 @@ describe('LinearLabelManager', () => {
 		});
 
 		it('should handle missing optional fields', async () => {
-			const mockProject = {
+			const mockTeam = {
 				labels: jest.fn().mockResolvedValue({
 					nodes: [
 						{
@@ -306,6 +347,10 @@ describe('LinearLabelManager', () => {
 						}
 					]
 				})
+			};
+
+			const mockProject = {
+				team: mockTeam
 			};
 
 			mockLinearClient.project.mockResolvedValue(mockProject);
@@ -330,10 +375,14 @@ describe('LinearLabelManager', () => {
 		});
 
 		it('should retry on network errors', async () => {
+			const mockTeam = {
+				labels: jest.fn().mockResolvedValue({ nodes: [] })
+			};
+
 			mockLinearClient.project
 				.mockRejectedValueOnce(new Error('Network error'))
 				.mockResolvedValue({
-					labels: jest.fn().mockResolvedValue({ nodes: [] })
+					team: mockTeam
 				});
 
 			const result = await manager.fetchProjectLabels(validProjectId);
@@ -367,16 +416,24 @@ describe('LinearLabelManager', () => {
 				'22222222-2222-2222-2222-222222222222'
 			];
 
-			const mockProject1 = {
+			const mockTeam1 = {
 				labels: jest.fn().mockResolvedValue({
 					nodes: [{ id: 'label-1', name: 'Bug', color: '#d73a49' }]
 				})
 			};
 
-			const mockProject2 = {
+			const mockTeam2 = {
 				labels: jest.fn().mockResolvedValue({
 					nodes: [{ id: 'label-2', name: 'Feature', color: '#28a745' }]
 				})
+			};
+
+			const mockProject1 = {
+				team: mockTeam1
+			};
+
+			const mockProject2 = {
+				team: mockTeam2
 			};
 
 			mockLinearClient.project
@@ -397,10 +454,14 @@ describe('LinearLabelManager', () => {
 				'22222222-2222-2222-2222-222222222222'
 			];
 
-			const mockProject1 = {
+			const mockTeam1 = {
 				labels: jest.fn().mockResolvedValue({
 					nodes: [{ id: 'label-1', name: 'Bug', color: '#d73a49' }]
 				})
+			};
+
+			const mockProject1 = {
+				team: mockTeam1
 			};
 
 			mockLinearClient.project
@@ -431,46 +492,42 @@ describe('LinearLabelManager', () => {
 			manager = new LinearLabelManager(mockConfig);
 		});
 
-		it('should create label successfully', async () => {
+		it('should throw API limitation error with helpful instructions', async () => {
 			const labelConfig = {
 				name: 'Test Label',
 				description: 'Test description',
 				color: '#6366f1'
 			};
 
-			const mockCreateResponse = {
-				success: true,
-				label: {
-					id: 'new-label-id',
-					name: 'Test Label',
-					description: 'Test description',
-					color: '#6366f1',
-					createdAt: '2023-01-01T00:00:00Z'
-				}
-			};
+			await expect(
+				manager.createLabel(validTeamId, labelConfig)
+			).rejects.toThrow(
+				'Linear API does not support creating labels programmatically'
+			);
+		});
 
-			mockLinearClient.labelCreate.mockResolvedValue(mockCreateResponse);
-
-			const result = await manager.createLabel(validTeamId, labelConfig);
-
-			expect(result).toMatchObject({
-				id: 'new-label-id',
-				name: 'Test Label',
-				description: 'Test description',
-				color: '#6366f1',
-				createdAt: '2023-01-01T00:00:00Z',
-				isArchived: false
-			});
-
-			expect(mockLinearClient.labelCreate).toHaveBeenCalledWith({
-				teamId: validTeamId,
+		it('should include manual creation instructions in error', async () => {
+			const labelConfig = {
 				name: 'Test Label',
 				description: 'Test description',
 				color: '#6366f1'
-			});
+			};
+
+			try {
+				await manager.createLabel(validTeamId, labelConfig);
+				fail('Expected error to be thrown');
+			} catch (error) {
+				expect(error.message).toContain('Go to your Linear team settings');
+				expect(error.message).toContain('Navigate to Labels section');
+				expect(error.message).toContain('Name: "Test Label"');
+				expect(error.message).toContain('Description: "Test description"');
+				expect(error.message).toContain('Color: "#6366f1"');
+				expect(error.isApiLimitation).toBe(true);
+				expect(error.labelConfig).toEqual(labelConfig);
+			}
 		});
 
-		it('should validate required parameters', async () => {
+		it('should validate required parameters before showing API limitation', async () => {
 			await expect(manager.createLabel(null, {})).rejects.toThrow(
 				'Team ID is required and must be a string'
 			);
@@ -484,7 +541,7 @@ describe('LinearLabelManager', () => {
 			);
 		});
 
-		it('should validate color format', async () => {
+		it('should validate color format before showing API limitation', async () => {
 			const labelConfig = {
 				name: 'Test Label',
 				color: 'invalid-color'
@@ -495,49 +552,18 @@ describe('LinearLabelManager', () => {
 			).rejects.toThrow('Label color must be a valid hex color');
 		});
 
-		it('should handle creation failures', async () => {
-			const labelConfig = {
-				name: 'Test Label',
-				color: '#6366f1'
-			};
-
-			const mockCreateResponse = {
-				success: false,
-				error: 'Label already exists'
-			};
-
-			mockLinearClient.labelCreate.mockResolvedValue(mockCreateResponse);
-
-			await expect(
-				manager.createLabel(validTeamId, labelConfig)
-			).rejects.toThrow('Failed to create label: Label already exists');
-		});
-
-		it('should use default values for optional fields', async () => {
+		it('should use default values in error instructions', async () => {
 			const labelConfig = {
 				name: 'Test Label'
 			};
 
-			const mockCreateResponse = {
-				success: true,
-				label: {
-					id: 'new-label-id',
-					name: 'Test Label',
-					description: '',
-					color: '#6366f1'
-				}
-			};
-
-			mockLinearClient.labelCreate.mockResolvedValue(mockCreateResponse);
-
-			await manager.createLabel(validTeamId, labelConfig);
-
-			expect(mockLinearClient.labelCreate).toHaveBeenCalledWith({
-				teamId: validTeamId,
-				name: 'Test Label',
-				description: '',
-				color: '#6366f1'
-			});
+			try {
+				await manager.createLabel(validTeamId, labelConfig);
+				fail('Expected error to be thrown');
+			} catch (error) {
+				expect(error.message).toContain('Description: ""');
+				expect(error.message).toContain('Color: "#6366f1"');
+			}
 		});
 	});
 
@@ -557,7 +583,8 @@ describe('LinearLabelManager', () => {
 							taskmaster: {
 								name: 'taskmaster',
 								description: 'TaskMaster managed',
-								color: '#6366f1'
+								color: '#6366f1',
+								linearId: null
 							}
 						}
 					},
@@ -567,36 +594,38 @@ describe('LinearLabelManager', () => {
 							bug: {
 								name: 'Bug',
 								description: 'Something broken',
-								color: '#d73a49'
+								color: '#d73a49',
+								linearId: null
 							}
 						}
 					}
 				}
 			};
 
-			const projectLabels = {
-				[validProjectId]: [
-					{
-						id: 'existing-1',
-						name: 'Bug',
-						color: '#d73a49',
-						createdAt: '2023-01-01T00:00:00Z'
-					}
-				]
-			};
+			const organizationLabels = [
+				{
+					id: 'existing-1',
+					name: 'Bug',
+					color: '#d73a49',
+					description: 'Something broken',
+					createdAt: '2023-01-01T00:00:00Z',
+					teams: [{ id: validTeamId, name: 'Test Team' }]
+				}
+			];
 
 			const analysis = manager.analyzeLabelDelta(
 				labelSetsConfig,
-				projectLabels,
+				organizationLabels,
 				validTeamId
 			);
 
 			expect(analysis.teamId).toBe(validTeamId);
 			expect(analysis.enabledCategories).toHaveLength(2);
 			expect(analysis.missingLabels).toHaveLength(1);
-			expect(analysis.existingLabels).toHaveLength(1);
+			expect(analysis.needsSync).toHaveLength(1);
 			expect(analysis.summary.totalRequired).toBe(2);
 			expect(analysis.summary.totalMissing).toBe(1);
+			expect(analysis.summary.totalNeedsSync).toBe(1);
 
 			// Check missing label
 			expect(analysis.missingLabels[0]).toMatchObject({
@@ -605,11 +634,11 @@ describe('LinearLabelManager', () => {
 				action: 'create'
 			});
 
-			// Check existing label
-			expect(analysis.existingLabels[0]).toMatchObject({
+			// Check sync needed label
+			expect(analysis.needsSync[0]).toMatchObject({
 				categoryKey: 'types',
 				labelKey: 'bug',
-				action: 'exists'
+				action: 'sync_required'
 			});
 		});
 
@@ -622,28 +651,28 @@ describe('LinearLabelManager', () => {
 							bug: {
 								name: 'Bug',
 								description: 'Something broken',
-								color: '#ff0000'
+								color: '#ff0000',
+								linearId: 'existing-1'
 							}
 						}
 					}
 				}
 			};
 
-			const projectLabels = {
-				[validProjectId]: [
-					{
-						id: 'existing-1',
-						name: 'Bug',
-						color: '#d73a49', // Different color
-						description: 'Something broken', // Same description
-						createdAt: '2023-01-01T00:00:00Z'
-					}
-				]
-			};
+			const organizationLabels = [
+				{
+					id: 'existing-1',
+					name: 'Bug',
+					color: '#d73a49', // Different color
+					description: 'Something broken', // Same description
+					createdAt: '2023-01-01T00:00:00Z',
+					teams: [{ id: validTeamId, name: 'Test Team' }]
+				}
+			];
 
 			const analysis = manager.analyzeLabelDelta(
 				labelSetsConfig,
-				projectLabels,
+				organizationLabels,
 				validTeamId
 			);
 
@@ -652,7 +681,8 @@ describe('LinearLabelManager', () => {
 				type: 'color',
 				labelName: 'Bug',
 				configured: '#ff0000',
-				existing: '#d73a49'
+				existing: '#d73a49',
+				action: 'update_linear'
 			});
 		});
 
@@ -664,18 +694,19 @@ describe('LinearLabelManager', () => {
 						labels: {
 							taskmaster: {
 								name: 'taskmaster',
-								color: '#6366f1'
+								color: '#6366f1',
+								linearId: null
 							}
 						}
 					}
 				}
 			};
 
-			const projectLabels = {};
+			const organizationLabels = [];
 
 			const analysis = manager.analyzeLabelDelta(
 				labelSetsConfig,
-				projectLabels,
+				organizationLabels,
 				validTeamId
 			);
 
@@ -690,24 +721,29 @@ describe('LinearLabelManager', () => {
 					core: {
 						enabled: true,
 						labels: {
-							taskmaster: { name: 'taskmaster', color: '#6366f1' }
+							taskmaster: {
+								name: 'taskmaster',
+								color: '#6366f1',
+								linearId: null
+							}
 						}
 					}
 				}
 			};
 
-			const projectLabels = {};
+			const organizationLabels = [];
 
 			const analysis = manager.analyzeLabelDelta(
 				labelSetsConfig,
-				projectLabels,
+				organizationLabels,
 				validTeamId
 			);
 
 			expect(analysis.recommendations).toHaveLength(1);
 			expect(analysis.recommendations[0]).toMatchObject({
 				type: 'create_labels',
-				priority: 'high'
+				priority: 'high',
+				command: 'linear-sync-labels'
 			});
 		});
 	});
@@ -726,24 +762,33 @@ describe('LinearLabelManager', () => {
 			mockExistsSync.mockReturnValue(true);
 			mockReadFileSync.mockReturnValue(
 				JSON.stringify({
-					categories: {
-						core: {
-							enabled: true,
-							labels: {}
+					version: '1.0.0',
+					enabled: true,
+					labels: {
+						categories: {
+							core: {
+								enabled: true,
+								labels: {}
+							}
 						}
 					}
 				})
 			);
 
-			// Mock Linear API
-			mockLinearClient.project.mockResolvedValue({
-				labels: jest.fn().mockResolvedValue({ nodes: [] })
+			// Mock Linear API for organization labels
+			mockLinearClient.teams.mockResolvedValue({
+				nodes: [
+					{
+						id: validTeamId,
+						name: 'Test Team',
+						labels: jest.fn().mockResolvedValue({ nodes: [] })
+					}
+				]
 			});
 
 			const result = await analyzeLabelConfiguration(
 				'test-api-key',
 				'/test/root',
-				[validProjectId],
 				validTeamId
 			);
 

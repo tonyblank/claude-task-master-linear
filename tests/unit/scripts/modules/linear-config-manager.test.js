@@ -428,7 +428,7 @@ describe('Linear Configuration Manager', () => {
 		it('should return correct config path', () => {
 			const result = getLinearConfigPath('/test/project');
 
-			expect(result).toBe('/test/project/linear-config.json');
+			expect(result).toBe('/test/project/.taskmaster/linear-config.json');
 		});
 	});
 
@@ -440,7 +440,7 @@ describe('Linear Configuration Manager', () => {
 
 			expect(result).toBe(true);
 			expect(mockFs.default.existsSync).toHaveBeenCalledWith(
-				'/test/project/linear-config.json'
+				'/test/project/.taskmaster/linear-config.json'
 			);
 		});
 
@@ -488,7 +488,7 @@ describe('Linear Configuration Manager', () => {
 			);
 
 			expect(mockFs.default.writeFileSync).toHaveBeenCalledWith(
-				'/test/project/linear-config.json',
+				'/test/project/.taskmaster/linear-config.json',
 				expect.stringContaining('"autoApplyTaskmaster": false'),
 				'utf8'
 			);

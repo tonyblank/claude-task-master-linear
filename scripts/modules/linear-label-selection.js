@@ -69,14 +69,18 @@ export class LinearLabelSelector {
 
 			// Step 1: Load and analyze current configuration
 			const labelSetsConfig = this.labelManager.loadLabelSetsConfig();
-			const projectLabels = await this.labelManager.fetchMultipleProjectLabels(
-				this.config.projectIds
-			);
+			const { allUniqueLabels } =
+				await this.labelManager.fetchOrganizationLabels();
 			const analysis = this.labelManager.analyzeLabelDelta(
 				labelSetsConfig,
-				projectLabels,
+				allUniqueLabels,
 				this.config.teamId
 			);
+
+			// Stop spinner after data fetching but before interactive prompts
+			if (options.spinner) {
+				options.spinner.stop();
+			}
 
 			// Step 2: Display current status
 			this._displayCurrentStatus(analysis);
@@ -88,7 +92,7 @@ export class LinearLabelSelector {
 			// Step 4: Re-analyze with updated configuration
 			const updatedAnalysis = this.labelManager.analyzeLabelDelta(
 				updatedConfig,
-				projectLabels,
+				allUniqueLabels,
 				this.config.teamId
 			);
 
@@ -175,10 +179,9 @@ export class LinearLabelSelector {
 			([key, category]) => {
 				const labelCount = Object.keys(category.labels).length;
 				const autoApplyText = category.autoApply ? ' [Auto-Apply]' : '';
-				const enabledText = category.enabled ? '✅' : '❌';
 
 				return {
-					name: `${enabledText} ${category.description || key} (${labelCount} labels)${autoApplyText}`,
+					name: `${category.description || key} (${labelCount} labels)${autoApplyText}`,
 					value: key,
 					checked: category.enabled,
 					short: category.description || key
@@ -201,8 +204,6 @@ export class LinearLabelSelector {
 				);
 			} else if (key === 'languages') {
 				console.log('     Programming language detection and filtering');
-			} else if (key === 'custom') {
-				console.log('     Your own custom labels for project-specific needs');
 			}
 		});
 		console.log('');
@@ -277,7 +278,7 @@ export class LinearLabelSelector {
 	}
 
 	/**
-	 * Review missing labels and confirm creation
+	 * Review missing labels and provide manual creation instructions
 	 *
 	 * @param {Object} analysis - Updated label analysis
 	 * @returns {Promise<Object>} Label creation results
@@ -289,10 +290,17 @@ export class LinearLabelSelector {
 			return { created: [], skipped: [], errors: [] };
 		}
 
-		messages.header('Label Creation Review');
+		messages.header('Label Creation Instructions');
 		console.log(
-			`${analysis.summary.totalMissing} label(s) need to be created in Linear:\\n`
+			`${analysis.summary.totalMissing} label(s) need to be created in Linear:\n`
 		);
+
+		// Display API limitation notice
+		console.log('⚠️  Linear API Limitation:');
+		console.log(
+			"   Linear's GraphQL API does not support creating labels programmatically."
+		);
+		console.log('   Labels must be created manually through the Linear UI.\n');
 
 		// Group missing labels by category
 		const labelsByCategory = {};
@@ -303,89 +311,42 @@ export class LinearLabelSelector {
 			labelsByCategory[label.categoryKey].push(label);
 		});
 
-		// Display labels to be created
+		// Display labels to be created with instructions
+		console.log('📋 Labels to create manually:');
 		Object.entries(labelsByCategory).forEach(([categoryKey, labels]) => {
 			const categoryName =
 				analysis.enabledCategories.find((c) => c.key === categoryKey)?.name ||
 				categoryKey;
-			console.log(`📂 ${categoryName}:`);
+			console.log(`\n📂 ${categoryName}:`);
 
 			labels.forEach((label) => {
 				console.log(`   • ${label.config.name}`);
-				console.log(
-					`     Color: ${label.config.color} | Description: ${label.config.description}`
-				);
+				console.log(`     Color: ${label.config.color}`);
+				console.log(`     Description: ${label.config.description}`);
 			});
-			console.log('');
 		});
 
-		// Get user confirmation
-		const confirmation = await inquirer.prompt([
-			promptConfigs.confirm(
-				'createLabels',
-				`Create these ${analysis.summary.totalMissing} label(s) in Linear`,
-				true
-			)
-		]);
+		console.log('\n🛠️  Manual Creation Steps:');
+		console.log('1. Go to your Linear team settings');
+		console.log('2. Navigate to the Labels section');
+		console.log(
+			'3. Create each label with the exact name, color, and description shown above'
+		);
+		console.log('4. Run the sync command to detect and store the label IDs');
 
-		if (!confirmation.createLabels) {
-			messages.info(
-				'Skipped label creation. You can create them later using the audit command.'
-			);
-			return { created: [], skipped: analysis.missingLabels, errors: [] };
-		}
-
-		// Create labels
-		messages.info('🔄 Creating labels in Linear...');
+		console.log('\n💡 Next Steps:');
+		console.log('   • Create the labels shown above in Linear manually');
+		console.log(
+			'   • Run `linear-sync-labels` command to detect and sync the labels'
+		);
+		console.log('   • Continue with your TaskMaster configuration\n');
 
 		const results = {
 			created: [],
-			skipped: [],
-			errors: []
+			skipped: analysis.missingLabels,
+			errors: [],
+			requiresManualCreation: true
 		};
-
-		for (const missingLabel of analysis.missingLabels) {
-			try {
-				const createdLabel = await this.labelManager.createLabel(
-					this.config.teamId,
-					missingLabel.config
-				);
-
-				results.created.push({
-					category: missingLabel.categoryKey,
-					labelKey: missingLabel.labelKey,
-					label: createdLabel
-				});
-
-				log('info', `Created label: ${createdLabel.name} (${createdLabel.id})`);
-			} catch (error) {
-				results.errors.push({
-					category: missingLabel.categoryKey,
-					labelKey: missingLabel.labelKey,
-					config: missingLabel.config,
-					error: error.message
-				});
-
-				log(
-					'error',
-					`Failed to create label "${missingLabel.config.name}": ${error.message}`
-				);
-			}
-		}
-
-		// Display results
-		if (results.created.length > 0) {
-			messages.success(
-				`✅ Successfully created ${results.created.length} label(s)`
-			);
-		}
-
-		if (results.errors.length > 0) {
-			messages.error(`❌ Failed to create ${results.errors.length} label(s)`);
-			console.log(
-				'   You can try creating these manually in Linear or run the audit command later.'
-			);
-		}
 
 		return results;
 	}
@@ -563,7 +524,9 @@ export class LinearLabelSelector {
 		console.log(
 			`   • Use audit command to sync label changes: npm run audit:labels`
 		);
-		console.log(`   • Edit label-sets.json to customize labels and colors`);
+		console.log(
+			`   • Edit label-sets.json to customize core, type, and language labels`
+		);
 
 		messages.success('✅ Label configuration completed successfully!');
 	}
@@ -576,12 +539,11 @@ export class LinearLabelSelector {
 	async validateLabelConfiguration() {
 		try {
 			const labelSetsConfig = this.labelManager.loadLabelSetsConfig();
-			const projectLabels = await this.labelManager.fetchMultipleProjectLabels(
-				this.config.projectIds
-			);
+			const { allUniqueLabels } =
+				await this.labelManager.fetchOrganizationLabels();
 			const analysis = this.labelManager.analyzeLabelDelta(
 				labelSetsConfig,
-				projectLabels,
+				allUniqueLabels,
 				this.config.teamId
 			);
 

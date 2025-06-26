@@ -448,30 +448,27 @@ COMPLEX_VAR=value=with=equals`;
 		it('should format wizard selections into environment variables', () => {
 			const selections = {
 				apiKey: 'lin_api_test_key',
-				teams: [
-					{ id: 'team1', name: 'Team 1' },
-					{ id: 'team2', name: 'Team 2' }
-				],
-				projects: ['proj1', 'proj2', 'proj3'],
+				team: { id: 'team1', name: 'Team 1' },
+				project: { id: 'proj1', name: 'Project 1' },
 				workspaceId: 'workspace123'
 			};
 
 			const result = formatLinearEnvVars(selections);
 
 			expect(result.LINEAR_API_KEY).toBe('lin_api_test_key');
-			expect(result.LINEAR_TEAM_IDS).toBe('team1,team2');
-			expect(result.LINEAR_PROJECT_IDS).toBe('proj1,proj2,proj3');
+			expect(result.LINEAR_TEAM_ID).toBe('team1');
+			expect(result.LINEAR_PROJECT_ID).toBe('proj1');
 			expect(result.LINEAR_WORKSPACE_ID).toBe('workspace123');
 		});
 
-		it('should handle mixed team formats', () => {
+		it('should handle string team format', () => {
 			const selections = {
-				teams: ['team1', { id: 'team2', name: 'Team 2' }, 'team3']
+				team: 'team1'
 			};
 
 			const result = formatLinearEnvVars(selections);
 
-			expect(result.LINEAR_TEAM_IDS).toBe('team1,team2,team3');
+			expect(result.LINEAR_TEAM_ID).toBe('team1');
 		});
 
 		it('should handle empty selections', () => {
@@ -484,14 +481,14 @@ COMPLEX_VAR=value=with=equals`;
 
 		it('should handle single team and project', () => {
 			const selections = {
-				teams: [{ id: 'single-team' }],
-				projects: ['single-project']
+				team: { id: 'single-team' },
+				project: 'single-project'
 			};
 
 			const result = formatLinearEnvVars(selections);
 
-			expect(result.LINEAR_TEAM_IDS).toBe('single-team');
-			expect(result.LINEAR_PROJECT_IDS).toBe('single-project');
+			expect(result.LINEAR_TEAM_ID).toBe('single-team');
+			expect(result.LINEAR_PROJECT_ID).toBe('single-project');
 		});
 	});
 });

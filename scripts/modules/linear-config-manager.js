@@ -404,7 +404,7 @@ export function formatLinearConfig(selections) {
  * @returns {string} Path to linear-config.json
  */
 export function getLinearConfigPath(projectRoot) {
-	return path.join(projectRoot, 'linear-config.json');
+	return path.join(projectRoot, '.taskmaster', 'linear-config.json');
 }
 
 /**

@@ -350,7 +350,6 @@ async function addTask(
 		if (manualTaskData) {
 			report('Using manually provided task data', 'info');
 			taskData = manualTaskData;
-			report('DEBUG: Taking MANUAL task data path.', 'debug');
 
 			// Basic validation for manual data
 			if (
@@ -364,7 +363,6 @@ async function addTask(
 				);
 			}
 		} else {
-			report('DEBUG: Taking AI task generation path.', 'debug');
 			// --- Refactored AI Interaction ---
 			report(`Generating task data with AI with prompt:\n${prompt}`, 'info');
 
@@ -441,7 +439,6 @@ async function addTask(
 
 			try {
 				const serviceRole = useResearch ? 'research' : 'main';
-				report('DEBUG: Calling generateObjectService...', 'debug');
 
 				aiServiceResponse = await generateObjectService({
 					// Capture the full response
@@ -455,7 +452,6 @@ async function addTask(
 					commandName: commandName || 'add-task', // Use passed commandName or default
 					outputType: outputType || (isMCP ? 'mcp' : 'cli') // Use passed outputType or derive
 				});
-				report('DEBUG: generateObjectService returned successfully.', 'debug');
 
 				if (!aiServiceResponse || !aiServiceResponse.mainResult) {
 					throw new Error(
@@ -502,7 +498,6 @@ async function addTask(
 				report(`Error generating task with AI: ${error.message}`, 'error');
 				throw error; // Re-throw error after logging
 			} finally {
-				report('DEBUG: generateObjectService finally block reached.', 'debug');
 				// Clean up if somehow still running
 				if (loadingIndicator) {
 					stopLoadingIndicator(loadingIndicator);
@@ -556,11 +551,9 @@ async function addTask(
 			description: `Tasks for ${targetTag} context`
 		});
 
-		report('DEBUG: Writing tasks.json...', 'debug');
 		// Write the updated raw data back to the file
 		// The writeJSON function will automatically filter out _rawTaggedData
 		writeJSON(tasksPath, rawData);
-		report('DEBUG: tasks.json written.', 'debug');
 
 		// Emit task creation event through integration system
 		try {
@@ -583,8 +576,6 @@ async function addTask(
 				},
 				operationContext
 			);
-
-			report('DEBUG: Task creation event emitted successfully.', 'debug');
 		} catch (eventError) {
 			// Don't fail the task creation if event emission fails
 			report(
@@ -595,13 +586,6 @@ async function addTask(
 
 		// Generate markdown task files
 		// report('Generating task files...', 'info');
-		// report('DEBUG: Calling generateTaskFiles...', 'debug');
-		// // Pass mcpLog if available to generateTaskFiles
-		// await generateTaskFiles(tasksPath, path.dirname(tasksPath), {
-		// 	projectRoot,
-		// 	tag: targetTag
-		// });
-		// report('DEBUG: generateTaskFiles finished.', 'debug');
 
 		// Show success message - only for text output (CLI)
 		if (outputFormat === 'text') {
@@ -744,10 +728,6 @@ async function addTask(
 			}
 		}
 
-		report(
-			`DEBUG: Returning new task ID: ${newTaskId} and telemetry.`,
-			'debug'
-		);
 		return {
 			newTaskId: newTaskId,
 			telemetryData: aiServiceResponse ? aiServiceResponse.telemetryData : null,

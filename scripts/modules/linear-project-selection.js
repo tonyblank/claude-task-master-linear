@@ -15,6 +15,8 @@ import { LinearClient } from '@linear/sdk';
 import { log } from './utils.js';
 import { promptConfigs, messages } from './prompts.js';
 import inquirer from 'inquirer';
+import { createLinearProjectInteractive } from './linear-project-creation.js';
+import { getGitRepositoryNameSync } from './utils/git-utils.js';
 
 /**
  * Project selection error types
@@ -163,7 +165,9 @@ export class LinearProjectSelector {
 		const {
 			allowMultiple = true,
 			allowSearch = true,
-			message = 'Select Linear project(s)',
+			message = allowMultiple
+				? 'Select Linear project(s)'
+				: 'Select Linear project',
 			showDetails = true
 		} = options;
 
@@ -175,16 +179,26 @@ export class LinearProjectSelector {
 
 		try {
 			// Display header with project information and TaskMaster mapping explanation
-			messages.header('Available Linear Projects');
+			const headerText = allowMultiple
+				? 'Available Linear Projects'
+				: 'Available Linear Projects';
+			messages.header(headerText);
 			console.log(`Found ${projects.length} project(s):\n`);
 
-			// Show TaskMaster mapping information
-			messages.info('📋 Project Mapping:');
-			console.log(
-				'   • Linear Project → TaskMaster .taskmaster/tasks directory'
-			);
-			console.log('   • Top-level tasks → Linear issues under the project');
-			console.log('   • Subtasks → Linear sub-issues\n');
+			// Show TaskMaster mapping information for single selection
+			if (!allowMultiple) {
+				messages.info('📋 1:1:1 Architecture:');
+				console.log('   • 1 TaskMaster repo = 1 Linear project');
+				console.log('   • TaskMaster tasks = Linear issues');
+				console.log('   • TaskMaster subtasks = Linear sub-issues\n');
+			} else {
+				messages.info('📋 Project Mapping:');
+				console.log(
+					'   • Linear Project → TaskMaster .taskmaster/tasks directory'
+				);
+				console.log('   • Top-level tasks → Linear issues under the project');
+				console.log('   • Subtasks → Linear sub-issues\n');
+			}
 
 			// Show project overview if details are enabled
 			if (showDetails) {
@@ -207,6 +221,19 @@ export class LinearProjectSelector {
 				value: project,
 				short: project.displayName
 			}));
+
+			// Add "Create new project" option for single selection mode (1:1:1 architecture)
+			if (!allowMultiple) {
+				choices.unshift(
+					new inquirer.Separator('── Actions ──'),
+					{
+						name: '🆕 Create a new Linear project',
+						value: '__CREATE_NEW__',
+						short: 'Create New Project'
+					},
+					new inquirer.Separator('── Existing Projects ──')
+				);
+			}
 
 			// Add convenience options for multiple selection
 			if (allowMultiple && projects.length > 1) {
@@ -239,12 +266,13 @@ export class LinearProjectSelector {
 					}
 				);
 			} else {
-				// Single selection mode
+				// Single selection mode - filter out multi-selection actions but keep CREATE_NEW
 				const listChoices = choices.filter(
 					(choice) =>
 						typeof choice === 'object' &&
 						choice.value &&
-						!choice.value.toString().startsWith('__')
+						(choice.value === '__CREATE_NEW__' ||
+							!choice.value.toString().startsWith('__'))
 				);
 				promptConfig = promptConfigs.list(
 					'selectedProjects',
@@ -265,6 +293,19 @@ export class LinearProjectSelector {
 			} else if (allowMultiple && selectedProjects.includes('__CLEAR_ALL__')) {
 				selectedProjects = [];
 				messages.info('Cleared all selections');
+			} else if (selectedProjects.includes('__CREATE_NEW__')) {
+				// Handle creating a new project
+				try {
+					const newProject = await this._handleCreateNewProject();
+					selectedProjects = [newProject];
+					messages.success(
+						`Created and selected new project: ${newProject.displayName}`
+					);
+				} catch (error) {
+					messages.error(`Failed to create new project: ${error.message}`);
+					// Re-throw to allow the caller to handle the error
+					throw error;
+				}
 			} else {
 				// Filter out special actions and validate
 				selectedProjects = selectedProjects.filter(
@@ -322,9 +363,52 @@ export class LinearProjectSelector {
 	 */
 	async fetchAndSelectProjects(teamId, options = {}) {
 		try {
+			// Store team ID for use in project creation
+			this._currentTeamId = teamId;
+
 			messages.info(`Fetching projects for selected team...`);
 
-			const projects = await this.fetchTeamProjects(teamId);
+			let projects;
+			try {
+				projects = await this.fetchTeamProjects(teamId);
+
+				// Stop spinner after data fetching but before interactive prompts
+				if (options.spinner) {
+					options.spinner.stop();
+				}
+			} catch (error) {
+				// Stop spinner on error too
+				if (options.spinner) {
+					options.spinner.stop();
+				}
+				// Handle the case where no projects are found
+				if (error.code === PROJECT_SELECTION_ERRORS.NO_PROJECTS_FOUND) {
+					messages.info('No existing projects found in this team.');
+
+					// Offer to create a new project
+					const createChoice = await inquirer.prompt([
+						promptConfigs.confirm(
+							'createNewProject',
+							'Would you like to create a new Linear project?'
+						)
+					]);
+
+					if (createChoice.createNewProject) {
+						const newProject = await this._handleCreateNewProject();
+						return [newProject];
+					} else {
+						// User chose not to create a project
+						const error = new Error(
+							'No project selected and user declined to create a new project'
+						);
+						error.code = PROJECT_SELECTION_ERRORS.INVALID_SELECTION;
+						throw error;
+					}
+				} else {
+					// Re-throw other errors
+					throw error;
+				}
+			}
 
 			if (projects.length === 1 && !options.forceSelection) {
 				// Auto-select if only one project available
@@ -351,6 +435,10 @@ export class LinearProjectSelector {
 
 			return await this.selectProjects(projects, options);
 		} catch (error) {
+			if (error.code) {
+				// Already enhanced error, re-throw as-is
+				throw error;
+			}
 			messages.error(`Failed to fetch and select projects: ${error.message}`);
 			throw error;
 		}
@@ -406,26 +494,12 @@ export class LinearProjectSelector {
 	 * @private
 	 */
 	_buildProjectFilter() {
-		const filter = {};
+		// Note: Linear API project filtering has schema constraints.
+		// Like teams, Linear API only returns projects the user has access to,
+		// so we don't need complex filters. Let the API handle access control.
 
-		// Apply status filter
-		if (this.config.statusFilter !== PROJECT_STATUS_FILTER.ALL) {
-			switch (this.config.statusFilter) {
-				case PROJECT_STATUS_FILTER.ACTIVE:
-					// Active projects (backlog, planned, started)
-					filter.state = {
-						name: { in: ['backlog', 'planned', 'started'] }
-					};
-					break;
-				case PROJECT_STATUS_FILTER.COMPLETED:
-					filter.state = { name: { eq: 'completed' } };
-					break;
-				default:
-					filter.state = { name: { eq: this.config.statusFilter } };
-			}
-		}
-
-		return filter;
+		// Return empty filter to get all accessible projects
+		return {};
 	}
 
 	/**
@@ -445,6 +519,43 @@ export class LinearProjectSelector {
 			cancelled: '❌'
 		};
 		return indicators[state?.toLowerCase()] || '📄';
+	}
+
+	/**
+	 * Handle creating a new Linear project with git repo name as default
+	 *
+	 * @returns {Promise<Object>} Created project object
+	 * @private
+	 */
+	async _handleCreateNewProject() {
+		try {
+			// Get the team ID - we need to pass it from the calling context
+			if (!this._currentTeamId) {
+				throw new Error('Team ID is required to create a new project');
+			}
+
+			// Try to get git repository name as default
+			let defaultProjectName = '';
+			try {
+				// Use the current working directory to detect git repo name
+				defaultProjectName = getGitRepositoryNameSync(process.cwd()) || '';
+			} catch (error) {
+				// If git detection fails, continue with empty default
+				log('debug', `Could not detect git repository name: ${error.message}`);
+			}
+
+			// Create the project interactively using our project creation module
+			const newProject = await createLinearProjectInteractive(
+				this.config.apiKey,
+				this._currentTeamId,
+				defaultProjectName
+			);
+
+			return newProject;
+		} catch (error) {
+			log('error', `Failed to create new project: ${error.message}`);
+			throw error;
+		}
 	}
 
 	/**
@@ -589,4 +700,36 @@ export async function selectLinearProjects(apiKey, teamId, options = {}) {
 export async function fetchLinearProjects(apiKey, teamId, options = {}) {
 	const selector = new LinearProjectSelector({ apiKey, ...options });
 	return await selector.fetchTeamProjects(teamId);
+}
+
+/**
+ * Select a single Linear project for a team
+ *
+ * @param {string} apiKey - Linear API key
+ * @param {string} teamId - Linear team ID
+ * @param {Object} options - Selection options
+ * @returns {Promise<Object>} Selected project object
+ */
+export async function selectLinearProject(apiKey, teamId, options = {}) {
+	const selector = new LinearProjectSelector({ apiKey, ...options });
+
+	// Force single selection for the simplified 1:1:1 architecture
+	const singleSelectionOptions = {
+		...options,
+		allowMultiple: false,
+		message: 'Select Linear project'
+	};
+
+	const projects = await selector.fetchAndSelectProjects(
+		teamId,
+		singleSelectionOptions
+	);
+
+	// If fetchAndSelectProjects returns an array, take the first one
+	// If it returns a single object, return it directly
+	if (Array.isArray(projects)) {
+		return projects.length > 0 ? projects[0] : null;
+	}
+
+	return projects;
 }

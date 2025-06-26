@@ -119,16 +119,16 @@ describe('LinearTeamSelector', () => {
 					name: 'Engineering',
 					key: 'ENG',
 					description: 'Engineering team',
-					memberCount: 10,
-					projectCount: 5
+					members: jest.fn().mockResolvedValue({ totalCount: 10 }),
+					projects: jest.fn().mockResolvedValue({ totalCount: 5 })
 				},
 				{
 					id: '87654321-4321-4321-4321-cba987654321',
 					name: 'Design',
 					key: 'DES',
 					description: 'Design team',
-					memberCount: 3,
-					projectCount: 2
+					members: jest.fn().mockResolvedValue({ totalCount: 3 }),
+					projects: jest.fn().mockResolvedValue({ totalCount: 2 })
 				}
 			];
 
@@ -156,7 +156,9 @@ describe('LinearTeamSelector', () => {
 				{
 					id: '12345678-1234-1234-1234-123456789abc',
 					name: 'Engineering',
-					key: 'ENG'
+					key: 'ENG',
+					members: jest.fn().mockResolvedValue({ totalCount: 5 }),
+					projects: jest.fn().mockResolvedValue({ totalCount: 3 })
 				}
 			];
 
@@ -167,7 +169,8 @@ describe('LinearTeamSelector', () => {
 			const result = await selector.fetchTeams();
 
 			expect(result[0].description).toBe('No description available');
-			expect(result[0].memberCount).toBe(0);
+			expect(result[0].memberCount).toBe(5);
+			expect(result[0].projectCount).toBe(3);
 		});
 
 		it('should throw error when no teams found', async () => {

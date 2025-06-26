@@ -248,8 +248,11 @@ function _loadAndValidateConfig(explicitRoot = null) {
 			}
 
 			// --- Deprecation and Best Practice Warnings ---
-			_showDeprecationWarnings(config, configPath, isLegacy);
-			_showConfigurationWarnings(config, rootToUse);
+			// Skip warnings during interactive setup to avoid UI interference
+			if (!process.env.TASKMASTER_INTERACTIVE_SETUP) {
+				_showDeprecationWarnings(config, configPath, isLegacy);
+				_showConfigurationWarnings(config, rootToUse);
+			}
 		} catch (error) {
 			// Use console.error for actual errors during parsing
 			console.error(

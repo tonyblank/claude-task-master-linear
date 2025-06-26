@@ -273,8 +273,49 @@ export async function promptAndValidateLinearApiKey(options = {}) {
 	const {
 		maxRetries = 3,
 		allowSkip = false,
-		initialMessage = 'Enter your Linear API key'
+		initialMessage = 'Enter your Linear API key',
+		checkEnvironment = true
 	} = options;
+
+	// First, check if we already have a valid API key in the environment
+	if (checkEnvironment) {
+		const envApiKey = process.env.LINEAR_API_KEY;
+		if (envApiKey) {
+			log(
+				'info',
+				'Found existing Linear API key in environment, validating...'
+			);
+
+			try {
+				const testResult = await testLinearApiKey(envApiKey, {
+					timeout: 15000,
+					retries: 1
+				});
+
+				if (testResult.success) {
+					messages.success('✅ Using existing API key from environment');
+					messages.info(
+						`Connected as: ${testResult.user.name} (${testResult.user.email || 'No email'})`
+					);
+
+					return {
+						success: true,
+						apiKey: envApiKey,
+						user: testResult.user,
+						attempts: 0,
+						fromEnvironment: true
+					};
+				} else {
+					log(
+						'warn',
+						'Existing API key in environment is invalid, prompting for new one...'
+					);
+				}
+			} catch (error) {
+				log('warn', `Error testing environment API key: ${error.message}`);
+			}
+		}
+	}
 
 	let attempts = 0;
 	let lastError = null;
@@ -381,11 +422,15 @@ export async function promptAndValidateLinearApiKey(options = {}) {
 	};
 }
 
+// Alias for the main validation function
+export const validateLinearApiKey = promptAndValidateLinearApiKey;
+
 export default {
 	linearValidators,
 	LinearErrorTypes,
 	classifyLinearError,
 	getLinearErrorMessage,
 	testLinearApiKey,
-	promptAndValidateLinearApiKey
+	promptAndValidateLinearApiKey,
+	validateLinearApiKey
 };

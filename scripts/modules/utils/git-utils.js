@@ -349,6 +349,100 @@ function getCurrentBranchSync(projectRoot) {
 	}
 }
 
+/**
+ * Get the git repository name from the repository URL or directory name
+ * @param {string} projectRoot - Directory to check (required)
+ * @returns {Promise<string|null>} Repository name or null if not in git repo
+ */
+async function getGitRepositoryName(projectRoot) {
+	if (!projectRoot) {
+		throw new Error('projectRoot is required for getGitRepositoryName');
+	}
+
+	try {
+		// First try to get repository name from remote URL
+		const { stdout } = await execAsync('git remote get-url origin', {
+			cwd: projectRoot
+		});
+
+		if (stdout && stdout.trim()) {
+			const remoteUrl = stdout.trim();
+			// Extract repository name from various URL formats:
+			// https://github.com/user/repo.git -> repo
+			// git@github.com:user/repo.git -> repo
+			// https://github.com/user/repo -> repo
+			const match = remoteUrl.match(/\/([^\/]+?)(?:\.git)?$/);
+			if (match && match[1]) {
+				return match[1];
+			}
+		}
+	} catch (error) {
+		// If remote URL fails, fall through to directory name approach
+	}
+
+	try {
+		// Fallback: use the repository root directory name
+		const gitRoot = await getGitRepositoryRoot(projectRoot);
+		if (gitRoot) {
+			return path.basename(gitRoot);
+		}
+	} catch (error) {
+		// Ignore error and return null
+	}
+
+	return null;
+}
+
+/**
+ * Synchronous version of getting git repository name
+ * @param {string} projectRoot - Directory to check (required)
+ * @returns {string|null} Repository name or null if not in git repo
+ */
+function getGitRepositoryNameSync(projectRoot) {
+	if (!projectRoot) {
+		return null;
+	}
+
+	try {
+		// First try to get repository name from remote URL
+		const stdout = execSync('git remote get-url origin', {
+			cwd: projectRoot,
+			encoding: 'utf8'
+		});
+
+		if (stdout && stdout.trim()) {
+			const remoteUrl = stdout.trim();
+			// Extract repository name from various URL formats:
+			// https://github.com/user/repo.git -> repo
+			// git@github.com:user/repo.git -> repo
+			// https://github.com/user/repo -> repo
+			const match = remoteUrl.match(/\/([^\/]+?)(?:\.git)?$/);
+			if (match && match[1]) {
+				return match[1];
+			}
+		}
+	} catch (error) {
+		// If remote URL fails, fall through to directory name approach
+	}
+
+	try {
+		// Fallback: use the repository root directory name
+		const stdout = execSync('git rev-parse --show-toplevel', {
+			cwd: projectRoot,
+			encoding: 'utf8'
+		});
+
+		if (stdout && stdout.trim()) {
+			const gitRoot = stdout.trim();
+			return path.basename(gitRoot);
+		}
+	} catch (error) {
+		// Ignore error and return null
+	}
+
+	return null;
+}
+
 // Export all functions
 export {
 	isGitRepository,
@@ -366,5 +460,7 @@ export {
 	checkAndAutoSwitchGitTag,
 	checkAndAutoSwitchGitTagSync,
 	isGitRepositorySync,
-	getCurrentBranchSync
+	getCurrentBranchSync,
+	getGitRepositoryName,
+	getGitRepositoryNameSync
 };

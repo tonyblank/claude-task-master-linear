@@ -6,6 +6,7 @@ services:
     ports:
       - "3350:3350"
     volumes:
+      - .:/app
       - ./.taskmaster:/app/.taskmaster
       - ./assets:/app/assets
     environment:

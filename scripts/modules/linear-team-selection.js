@@ -63,13 +63,42 @@ export class LinearTeamSelector {
 			const teams = await this._retryOperation(async () => {
 				const teamsConnection = await this.linear.teams({
 					first: this.config.pageSize,
-					filter: {
-						// Only fetch teams where user has access
-						hasAccess: { eq: true }
-					}
+					includeArchived: false
+					// Note: No filter needed - Linear API only returns teams user has access to
 				});
 
-				return teamsConnection.nodes;
+				// Get teams with member and project counts
+				const teamsWithCounts = await Promise.all(
+					teamsConnection.nodes.map(async (team) => {
+						try {
+							// Get member count
+							const members = await team.members({ first: 1 });
+							const memberCount = members.totalCount || 0;
+
+							// Get project count
+							const projects = await team.projects({ first: 1 });
+							const projectCount = projects.totalCount || 0;
+
+							return {
+								...team,
+								memberCount,
+								projectCount
+							};
+						} catch (error) {
+							log(
+								'warn',
+								`Failed to get counts for team ${team.name}: ${error.message}`
+							);
+							return {
+								...team,
+								memberCount: 0,
+								projectCount: 0
+							};
+						}
+					})
+				);
+
+				return teamsWithCounts;
 			}, 'fetch teams');
 
 			if (!teams || teams.length === 0) {
@@ -183,6 +212,129 @@ export class LinearTeamSelector {
 				throw error;
 			}
 
+			// Check if this is a prompt cancellation error in non-interactive environment
+			if (
+				error.message.includes('User force closed') ||
+				error.message.includes('cancelled') ||
+				error.name === 'ExitPromptError'
+			) {
+				// Detect container/non-interactive environment
+				const isNonInteractive =
+					!process.stdin.isTTY ||
+					process.env.CI === 'true' ||
+					process.env.DOCKER_CONTAINER === 'true' ||
+					process.env.NODE_ENV === 'production';
+
+				let helpMessage = `Team selection failed: ${error.message}`;
+
+				if (isNonInteractive) {
+					helpMessage +=
+						'\n\n🐳 CONTAINER/NON-INTERACTIVE ENVIRONMENT DETECTED:';
+					helpMessage +=
+						'\nInteractive prompts may not work in this environment.';
+					helpMessage += '\n\nTo run the wizard successfully:';
+					helpMessage +=
+						'\n1. Run this wizard in an interactive terminal session';
+					helpMessage +=
+						'\n2. If using Docker, ensure TTY mode: docker run -it';
+					helpMessage +=
+						'\n3. If using container orchestration, access the container directly:';
+					helpMessage += '\n   docker exec -it <container-name> /bin/bash';
+					helpMessage +=
+						'\n   then run: ./bin/task-master.js linear-sync-setup';
+				}
+
+				const enhancedError = new Error(helpMessage);
+				enhancedError.code = TEAM_SELECTION_ERRORS.INVALID_SELECTION;
+				enhancedError.originalError = error;
+				enhancedError.isEnvironmentIssue = isNonInteractive;
+				throw enhancedError;
+			}
+
+			const enhancedError = new Error(
+				`Team selection failed: ${error.message}`
+			);
+			enhancedError.code = TEAM_SELECTION_ERRORS.INVALID_SELECTION;
+			enhancedError.originalError = error;
+			throw enhancedError;
+		}
+	}
+
+	/**
+	 * Present team selection interface for multiple teams
+	 *
+	 * @param {Array} teams - Array of team objects to select from
+	 * @param {Object} options - Selection options
+	 * @param {string} options.message - Custom selection message
+	 * @param {boolean} options.allowSearch - Enable search functionality (default: false)
+	 * @returns {Promise<Array>} Array of selected team objects
+	 * @throws {Error} If no teams provided or selection fails
+	 */
+	async selectTeams(teams, options = {}) {
+		const {
+			message = 'Select teams to include in the integration',
+			allowSearch = false
+		} = options;
+
+		if (!teams || !Array.isArray(teams) || teams.length === 0) {
+			throw new Error('No teams available for selection');
+		}
+
+		try {
+			console.log('\nAvailable Teams:');
+			teams.forEach((team, index) => {
+				console.log(`${index + 1}. ${team.displayName}`);
+				console.log(`   Description: ${team.description}`);
+				console.log(
+					`   Members: ${team.memberCount}, Projects: ${team.projectCount}\n`
+				);
+			});
+
+			// Create choices for inquirer
+			const choices = teams.map((team) => ({
+				name: `${team.displayName} - ${team.description}`,
+				value: team,
+				short: team.displayName
+			}));
+
+			// Use checkbox for multiple selection
+			const promptConfig = {
+				type: 'checkbox',
+				name: 'selectedTeams',
+				message: `${message} (use space to select, enter to confirm):`,
+				choices: choices,
+				pageSize: 10,
+				validate: (answer) => {
+					if (answer.length === 0) {
+						return 'You must select at least one team.';
+					}
+					return true;
+				}
+			};
+
+			const { selectedTeams } = await inquirer.prompt([promptConfig]);
+
+			if (!selectedTeams || selectedTeams.length === 0) {
+				const error = new Error('No teams selected');
+				error.code = TEAM_SELECTION_ERRORS.INVALID_SELECTION;
+				throw error;
+			}
+
+			messages.success(
+				`Selected ${selectedTeams.length} team(s): ${selectedTeams.map((t) => t.displayName).join(', ')}`
+			);
+			log(
+				'info',
+				`User selected teams: ${selectedTeams.map((t) => `${t.name} (${t.id})`).join(', ')}`
+			);
+
+			return selectedTeams;
+		} catch (error) {
+			if (error.code) {
+				// Already enhanced error
+				throw error;
+			}
+
 			const enhancedError = new Error(
 				`Team selection failed: ${error.message}`
 			);
@@ -203,6 +355,11 @@ export class LinearTeamSelector {
 			messages.info('Fetching available teams from Linear...');
 
 			const teams = await this.fetchTeams();
+
+			// Stop spinner after data fetching but before interactive prompts
+			if (options.spinner) {
+				options.spinner.stop();
+			}
 
 			if (teams.length === 1) {
 				// Auto-select if only one team available
@@ -227,6 +384,61 @@ export class LinearTeamSelector {
 		} catch (error) {
 			messages.error(`Failed to fetch and select team: ${error.message}`);
 			throw error;
+		}
+	}
+
+	/**
+	 * Fetch teams and present multiple selection interface in one step
+	 *
+	 * @param {Object} options - Combined options for fetching and selection
+	 * @returns {Promise<Object>} Result object with success and selectedTeams
+	 */
+	async fetchAndSelectTeams(options = {}) {
+		try {
+			const teams = await this.fetchTeams();
+
+			if (teams.length === 0) {
+				return {
+					success: false,
+					error: 'No teams available',
+					selectedTeams: []
+				};
+			}
+
+			if (teams.length === 1) {
+				// Auto-select if only one team available
+				messages.info(`Only one team available: ${teams[0].displayName}`);
+				const confirm = await inquirer.prompt([
+					promptConfigs.confirm('useTeam', `Use team "${teams[0].displayName}"`)
+				]);
+
+				if (confirm.useTeam) {
+					messages.success(`Using team: ${teams[0].displayName}`);
+					return {
+						success: true,
+						selectedTeams: [teams[0]]
+					};
+				} else {
+					return {
+						success: false,
+						error: 'User declined to use the only available team',
+						selectedTeams: []
+					};
+				}
+			}
+
+			const selectedTeams = await this.selectTeams(teams, options);
+			return {
+				success: true,
+				selectedTeams: selectedTeams
+			};
+		} catch (error) {
+			messages.error(`Failed to fetch and select teams: ${error.message}`);
+			return {
+				success: false,
+				error: error.message,
+				selectedTeams: []
+			};
 		}
 	}
 
@@ -386,4 +598,16 @@ export async function selectLinearTeam(apiKey, options = {}) {
 export async function fetchLinearTeams(apiKey, options = {}) {
 	const selector = new LinearTeamSelector({ apiKey, ...options });
 	return await selector.fetchTeams();
+}
+
+/**
+ * Convenience function to create and use team selector for multiple teams
+ *
+ * @param {string} apiKey - Linear API key
+ * @param {Object} options - Selection options
+ * @returns {Promise<Object>} Result object with success and selectedTeams
+ */
+export async function selectLinearTeams(apiKey, options = {}) {
+	const selector = new LinearTeamSelector({ apiKey, ...options });
+	return await selector.fetchAndSelectTeams(options);
 }

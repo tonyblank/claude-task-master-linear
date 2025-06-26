@@ -110,6 +110,9 @@ import {
 } from '../../src/constants/task-status.js';
 import { getTaskMasterVersion } from '../../src/utils/getVersion.js';
 import { syncTasksToReadme } from './sync-readme.js';
+import { linearSyncSetupCommand } from '../commands/linear-sync-setup.js';
+import { linearSyncLabelsCommand } from '../commands/linear-sync-labels.js';
+import { linearSyncAllCommand } from '../commands/linear-sync-all.js';
 
 /**
  * Runs the interactive setup process for model configuration.
@@ -3217,11 +3220,6 @@ ${result.result}
 		.action(async (cmdOptions) => {
 			// cmdOptions contains parsed arguments
 			try {
-				console.log('DEBUG: Running init command action in commands.js');
-				console.log(
-					'DEBUG: Options received by action:',
-					JSON.stringify(cmdOptions)
-				);
 				// Directly call the initializeProject function, passing the parsed options
 				await initializeProject(cmdOptions);
 				// initializeProject handles its own flow, including potential process.exit()
@@ -4093,6 +4091,101 @@ Examples:
 				);
 			} catch (error) {
 				console.error(chalk.red(`Error copying tag: ${error.message}`));
+				process.exit(1);
+			}
+		})
+		.on('error', function (err) {
+			console.error(chalk.red(`Error: ${err.message}`));
+			process.exit(1);
+		});
+
+	// linear-sync-setup command
+	// Following integration command naming pattern: {integration}-{command-name}
+	programInstance
+		.command('linear-sync-setup')
+		.description('Set up Linear integration with interactive wizard')
+		.option('--skip-test', 'Skip configuration testing after setup')
+		.option('--dry-run', 'Show what would be done without making changes')
+		.option(
+			'--project-root <path>',
+			'Project root directory (defaults to current directory)'
+		)
+		.action(async (options) => {
+			try {
+				await linearSyncSetupCommand(options);
+			} catch (error) {
+				console.error(chalk.red(`Setup failed: ${error.message}`));
+				if (process.env.DEBUG === '1') {
+					console.error(error);
+				}
+				process.exit(1);
+			}
+		})
+		.on('error', function (err) {
+			console.error(chalk.red(`Error: ${err.message}`));
+			process.exit(1);
+		});
+
+	// linear-sync-labels command
+	// Following integration command naming pattern: {integration}-{command-name}
+	programInstance
+		.command('linear-sync-labels')
+		.description(
+			'Synchronize TaskMaster labels with Linear (create missing, store IDs, resolve conflicts)'
+		)
+		.option('-n, --dry-run', 'Preview changes without applying them')
+		.option(
+			'-r, --resolve-conflicts',
+			'Update Linear labels to match TaskMaster configuration'
+		)
+		.option('--project-root <path>', 'TaskMaster project root (default: /app)')
+		.option('--team-id <id>', 'Specific Linear team ID to sync with')
+		.option('-f, --force', 'Skip confirmation prompts')
+		.option('-v, --verbose', 'Enable verbose logging')
+		.action(async (options) => {
+			try {
+				await linearSyncLabelsCommand(options);
+			} catch (error) {
+				console.error(chalk.red(`Label sync failed: ${error.message}`));
+				if (process.env.DEBUG === '1') {
+					console.error(error);
+				}
+				process.exit(1);
+			}
+		})
+		.on('error', function (err) {
+			console.error(chalk.red(`Error: ${err.message}`));
+			process.exit(1);
+		});
+
+	// linear-sync-all command
+	// Following integration command naming pattern: {integration}-{command-name}
+	programInstance
+		.command('linear-sync-all')
+		.description(
+			'Comprehensive synchronization between TaskMaster and Linear across all components'
+		)
+		.option('-n, --dry-run', 'Preview all changes without applying them')
+		.option(
+			'-r, --resolve-conflicts',
+			'Resolve conflicts across all components'
+		)
+		.option('--project-root <path>', 'TaskMaster project root (default: /app)')
+		.option('--team-id <id>', 'Specific Linear team ID to sync with')
+		.option(
+			'--labels-only',
+			'Sync only labels (equivalent to linear-sync-labels)'
+		)
+		.option('-f, --force', 'Skip confirmation prompts')
+		.option('-v, --verbose', 'Enable verbose logging')
+		.action(async (options) => {
+			try {
+				await linearSyncAllCommand(options);
+			} catch (error) {
+				console.error(chalk.red(`Comprehensive sync failed: ${error.message}`));
+				if (process.env.DEBUG === '1') {
+					console.error(error);
+				}
 				process.exit(1);
 			}
 		})

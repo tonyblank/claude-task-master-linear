@@ -92,7 +92,7 @@ export function appendLinearSection(envData, linearVars) {
 		for (const line of updatedLines) {
 			const trimmed = line.trim();
 
-			if (trimmed.includes('# Linear Integration')) {
+			if (trimmed.includes('Linear Integration')) {
 				inLinearSection = true;
 				continue;
 			}
@@ -319,18 +319,26 @@ export function formatLinearEnvVars(selections) {
 		linearVars.LINEAR_API_KEY = selections.apiKey;
 	}
 
-	// Team IDs (comma-separated)
-	if (selections.teams && selections.teams.length > 0) {
-		linearVars.LINEAR_TEAM_IDS = selections.teams
-			.map((team) => (typeof team === 'string' ? team : team.id))
-			.join(',');
+	// Team ID (single team)
+	if (selections.team) {
+		const teamId =
+			typeof selections.team === 'string'
+				? selections.team
+				: selections.team.id;
+		if (teamId) {
+			linearVars.LINEAR_TEAM_ID = teamId;
+		}
 	}
 
-	// Project IDs (comma-separated)
-	if (selections.projects && selections.projects.length > 0) {
-		linearVars.LINEAR_PROJECT_IDS = selections.projects
-			.map((project) => (typeof project === 'string' ? project : project.id))
-			.join(',');
+	// Project ID (single project)
+	if (selections.project) {
+		const projectId =
+			typeof selections.project === 'string'
+				? selections.project
+				: selections.project.id;
+		if (projectId) {
+			linearVars.LINEAR_PROJECT_ID = projectId;
+		}
 	}
 
 	// Workspace ID
