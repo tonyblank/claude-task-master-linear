@@ -408,4 +408,221 @@ describe('LinearIntegrationHandler - Real API Integration Tests', () => {
 			);
 		}, 30000);
 	});
+
+	describe('Real API - TaskMaster Status Mapping', () => {
+		test('should resolve TaskMaster statuses to real Linear state UUIDs', async () => {
+			if (!realLinearApiKey || !realTeamId) {
+				console.log(
+					'⏭️  Skipping TaskMaster status mapping test - credentials not available'
+				);
+				return;
+			}
+
+			await handler._performInitialization();
+
+			// Test resolution of each TaskMaster status
+			const taskMasterStatuses = [
+				'pending',
+				'in-progress',
+				'review',
+				'done',
+				'cancelled',
+				'deferred'
+			];
+			const results = {};
+
+			for (const status of taskMasterStatuses) {
+				const resolution = await handler.resolveTaskMasterStatusToLinearUUID(
+					realTeamId,
+					status
+				);
+
+				results[status] = resolution;
+
+				if (resolution.success) {
+					console.log(
+						`✅ Resolved "${status}" → "${resolution.stateName}" (${resolution.uuid})`
+					);
+
+					// Validate the resolution structure
+					expect(resolution).toMatchObject({
+						success: true,
+						uuid: expect.any(String),
+						stateName: expect.any(String),
+						stateType: expect.any(String),
+						taskMasterStatus: status,
+						matchType: expect.stringMatching(/^(exact|case-insensitive|fuzzy)$/)
+					});
+
+					// Validate UUID format (Linear UUIDs are typically like this)
+					expect(resolution.uuid).toMatch(/^[a-f0-9-]+$/i);
+				} else {
+					console.log(`❌ Failed to resolve "${status}": ${resolution.error}`);
+				}
+			}
+
+			const successfulMappings = Object.values(results).filter(
+				(r) => r.success
+			).length;
+			console.log(
+				`Resolved ${successfulMappings}/${taskMasterStatuses.length} TaskMaster statuses`
+			);
+
+			// At least some statuses should resolve successfully in a real Linear workspace
+			expect(successfulMappings).toBeGreaterThan(0);
+		}, 30000);
+
+		test('should generate complete TaskMaster UUID mappings', async () => {
+			if (!realLinearApiKey || !realTeamId) {
+				console.log(
+					'⏭️  Skipping TaskMaster mapping generation test - credentials not available'
+				);
+				return;
+			}
+
+			await handler._performInitialization();
+
+			const mappingResult = await handler.generateTaskMasterUUIDMappings(
+				realTeamId,
+				{
+					includeDetails: true
+				}
+			);
+
+			// Validate the result structure
+			expect(mappingResult).toMatchObject({
+				success: expect.any(Boolean),
+				mappings: expect.any(Object),
+				teamId: realTeamId,
+				totalStatuses: 6,
+				successfulMappings: expect.any(Number),
+				failedMappings: expect.any(Number),
+				generatedAt: expect.any(String)
+			});
+
+			if (mappingResult.success) {
+				console.log(
+					`✅ Generated complete TaskMaster mappings (${mappingResult.successfulMappings}/6)`
+				);
+
+				// Validate mappings structure
+				Object.entries(mappingResult.mappings).forEach(([status, uuid]) => {
+					expect(typeof status).toBe('string');
+					expect(typeof uuid).toBe('string');
+					expect(uuid).toMatch(/^[a-f0-9-]+$/i);
+				});
+
+				// Validate details if included
+				if (mappingResult.details) {
+					Object.entries(mappingResult.details).forEach(([status, detail]) => {
+						expect(detail).toMatchObject({
+							uuid: expect.any(String),
+							stateName: expect.any(String),
+							stateType: expect.any(String),
+							matchType: expect.stringMatching(
+								/^(exact|case-insensitive|fuzzy)$/
+							)
+						});
+					});
+				}
+			} else {
+				console.log(
+					`⚠️  Partial mapping generation (${mappingResult.successfulMappings}/6 successful)`
+				);
+
+				if (mappingResult.errors) {
+					mappingResult.errors.forEach((error) => {
+						console.log(`   ❌ ${error.taskMasterStatus}: ${error.error}`);
+					});
+				}
+			}
+
+			console.log(
+				`TaskMaster mapping generation completed: ${mappingResult.successfulMappings} successful, ${mappingResult.failedMappings} failed`
+			);
+		}, 30000);
+
+		test('should validate TaskMaster status mappings against real Linear states', async () => {
+			if (!realLinearApiKey || !realTeamId) {
+				console.log(
+					'⏭️  Skipping TaskMaster mapping validation test - credentials not available'
+				);
+				return;
+			}
+
+			await handler._performInitialization();
+
+			// First generate some mappings to validate
+			const mappingResult =
+				await handler.generateTaskMasterUUIDMappings(realTeamId);
+
+			if (Object.keys(mappingResult.mappings).length === 0) {
+				console.log('⏭️  No mappings generated - skipping validation test');
+				return;
+			}
+
+			// Validate the generated mappings
+			const validationResult = await handler.validateTaskMasterStatusMappings(
+				realTeamId,
+				mappingResult.mappings
+			);
+
+			expect(validationResult).toMatchObject({
+				success: expect.any(Boolean),
+				teamId: realTeamId,
+				validMappings: expect.any(Object),
+				invalidMappings: expect.any(Object),
+				missingMappings: expect.any(Array),
+				totalMappings: expect.any(Number),
+				validCount: expect.any(Number),
+				invalidCount: expect.any(Number),
+				missingCount: expect.any(Number),
+				validatedAt: expect.any(String)
+			});
+
+			console.log(
+				`Validation results: ${validationResult.validCount} valid, ${validationResult.invalidCount} invalid, ${validationResult.missingCount} missing`
+			);
+
+			// Generated mappings should be valid (since we just generated them)
+			expect(validationResult.validCount).toBeGreaterThan(0);
+			expect(validationResult.invalidCount).toBe(0);
+		}, 30000);
+
+		test('should handle invalid UUIDs in validation', async () => {
+			if (!realLinearApiKey || !realTeamId) {
+				console.log(
+					'⏭️  Skipping invalid UUID validation test - credentials not available'
+				);
+				return;
+			}
+
+			await handler._performInitialization();
+
+			// Test with invalid UUIDs
+			const invalidMappings = {
+				pending: 'invalid-uuid-123',
+				'in-progress': 'another-invalid-uuid',
+				done: 'fake-uuid-999'
+			};
+
+			const validationResult = await handler.validateTaskMasterStatusMappings(
+				realTeamId,
+				invalidMappings
+			);
+
+			expect(validationResult.success).toBe(false);
+			expect(validationResult.invalidCount).toBe(3);
+			expect(validationResult.validCount).toBe(0);
+			expect(validationResult.missingCount).toBe(3); // review, cancelled, deferred
+
+			Object.values(validationResult.invalidMappings).forEach((errorMsg) => {
+				expect(errorMsg).toContain('not found in Linear workspace');
+			});
+
+			console.log(
+				`✅ Invalid UUID validation test completed - correctly identified ${validationResult.invalidCount} invalid mappings`
+			);
+		}, 30000);
+	});
 });

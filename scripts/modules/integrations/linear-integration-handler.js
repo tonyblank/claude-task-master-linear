@@ -2250,6 +2250,411 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	}
 
 	// =============================================================================
+	// TASKMASTER STATUS MAPPING SYSTEM
+	// =============================================================================
+
+	/**
+	 * Default mappings from TaskMaster statuses to Linear state names
+	 * Each TaskMaster status can map to multiple possible Linear state names
+	 */
+	static TASKMASTER_STATUS_DEFAULTS = {
+		pending: ['Todo', 'Backlog'],
+		'in-progress': ['In Progress'],
+		review: ['In Review'],
+		done: ['Done', 'Completed'],
+		cancelled: ['Canceled', 'Cancelled'],
+		deferred: ['Backlog', 'On Hold']
+	};
+
+	/**
+	 * All valid TaskMaster statuses
+	 */
+	static TASKMASTER_STATUSES = Object.keys(
+		LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS
+	);
+
+	/**
+	 * Resolve a TaskMaster status to a Linear workflow state UUID
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} taskMasterStatus - TaskMaster status (pending, in-progress, review, done, cancelled, deferred)
+	 * @param {Object} options - Resolution options
+	 * @returns {Promise<Object>} Resolution result with UUID or error details
+	 */
+	async resolveTaskMasterStatusToLinearUUID(
+		teamId,
+		taskMasterStatus,
+		options = {}
+	) {
+		const { useCache = true, allowFuzzyFallback = true } = options;
+
+		try {
+			// Validate TaskMaster status
+			if (!taskMasterStatus || typeof taskMasterStatus !== 'string') {
+				return {
+					success: false,
+					error: 'TaskMaster status is required and must be a string',
+					taskMasterStatus
+				};
+			}
+
+			const normalizedStatus = taskMasterStatus.toLowerCase();
+			if (
+				!LinearIntegrationHandler.TASKMASTER_STATUSES.includes(normalizedStatus)
+			) {
+				return {
+					success: false,
+					error: `Invalid TaskMaster status: ${taskMasterStatus}. Valid statuses: ${LinearIntegrationHandler.TASKMASTER_STATUSES.join(', ')}`,
+					taskMasterStatus
+				};
+			}
+
+			// Get workflow states for the team
+			const statesData = await this.queryWorkflowStates(teamId, { useCache });
+			if (!statesData || !statesData.states || statesData.states.length === 0) {
+				return {
+					success: false,
+					error: `No workflow states found for team ${teamId}`,
+					taskMasterStatus,
+					teamId
+				};
+			}
+
+			// Get possible Linear state names for this TaskMaster status
+			const possibleStateNames =
+				LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS[normalizedStatus];
+			if (!possibleStateNames || possibleStateNames.length === 0) {
+				return {
+					success: false,
+					error: `No default Linear state names configured for TaskMaster status: ${taskMasterStatus}`,
+					taskMasterStatus
+				};
+			}
+
+			// Try exact matches first
+			for (const stateName of possibleStateNames) {
+				const matchedState = statesData.states.find(
+					(state) => state.name === stateName
+				);
+				if (matchedState) {
+					log(
+						'debug',
+						`Resolved TaskMaster status "${taskMasterStatus}" to Linear state "${matchedState.name}" (${matchedState.id})`
+					);
+					return {
+						success: true,
+						uuid: matchedState.id,
+						stateName: matchedState.name,
+						stateType: matchedState.type,
+						taskMasterStatus,
+						matchType: 'exact'
+					};
+				}
+			}
+
+			// Try case-insensitive matches
+			for (const stateName of possibleStateNames) {
+				const matchedState = statesData.states.find(
+					(state) => state.name.toLowerCase() === stateName.toLowerCase()
+				);
+				if (matchedState) {
+					log(
+						'debug',
+						`Resolved TaskMaster status "${taskMasterStatus}" to Linear state "${matchedState.name}" (${matchedState.id}) via case-insensitive match`
+					);
+					return {
+						success: true,
+						uuid: matchedState.id,
+						stateName: matchedState.name,
+						stateType: matchedState.type,
+						taskMasterStatus,
+						matchType: 'case-insensitive'
+					};
+				}
+			}
+
+			// Try fuzzy matching as fallback if enabled
+			if (allowFuzzyFallback) {
+				for (const stateName of possibleStateNames) {
+					const fuzzyMatch = this._findFuzzyWorkflowStateMatch(
+						statesData.states,
+						stateName
+					);
+					if (fuzzyMatch) {
+						log(
+							'debug',
+							`Resolved TaskMaster status "${taskMasterStatus}" to Linear state "${fuzzyMatch.name}" (${fuzzyMatch.id}) via fuzzy match`
+						);
+						return {
+							success: true,
+							uuid: fuzzyMatch.id,
+							stateName: fuzzyMatch.name,
+							stateType: fuzzyMatch.type,
+							taskMasterStatus,
+							matchType: 'fuzzy'
+						};
+					}
+				}
+			}
+
+			// No matches found
+			const availableStates = statesData.states.map((s) => s.name).join(', ');
+			return {
+				success: false,
+				error: `Could not find Linear state matching TaskMaster status "${taskMasterStatus}". Tried: ${possibleStateNames.join(', ')}. Available states: ${availableStates}`,
+				taskMasterStatus,
+				possibleStateNames,
+				availableStates: statesData.states.map((s) => ({
+					id: s.id,
+					name: s.name,
+					type: s.type
+				}))
+			};
+		} catch (error) {
+			log(
+				'error',
+				`Failed to resolve TaskMaster status "${taskMasterStatus}" for team ${teamId}:`,
+				error.message
+			);
+			return {
+				success: false,
+				error: `Resolution failed: ${error.message}`,
+				taskMasterStatus,
+				teamId
+			};
+		}
+	}
+
+	/**
+	 * Generate complete UUID mappings for all TaskMaster statuses
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} options - Generation options
+	 * @returns {Promise<Object>} Complete mapping result
+	 */
+	async generateTaskMasterUUIDMappings(teamId, options = {}) {
+		const {
+			useCache = true,
+			allowFuzzyFallback = true,
+			includeDetails = false
+		} = options;
+
+		try {
+			const mappings = {};
+			const details = {};
+			const errors = [];
+
+			log(
+				'info',
+				`Generating TaskMaster-to-Linear UUID mappings for team ${teamId}`
+			);
+
+			// Resolve each TaskMaster status
+			for (const taskMasterStatus of LinearIntegrationHandler.TASKMASTER_STATUSES) {
+				const resolution = await this.resolveTaskMasterStatusToLinearUUID(
+					teamId,
+					taskMasterStatus,
+					{ useCache, allowFuzzyFallback }
+				);
+
+				if (resolution.success) {
+					mappings[taskMasterStatus] = resolution.uuid;
+					if (includeDetails) {
+						details[taskMasterStatus] = {
+							uuid: resolution.uuid,
+							stateName: resolution.stateName,
+							stateType: resolution.stateType,
+							matchType: resolution.matchType
+						};
+					}
+					log(
+						'debug',
+						`✅ Mapped "${taskMasterStatus}" → "${resolution.stateName}" (${resolution.uuid})`
+					);
+				} else {
+					errors.push({
+						taskMasterStatus,
+						error: resolution.error
+					});
+					log(
+						'warn',
+						`❌ Failed to map "${taskMasterStatus}": ${resolution.error}`
+					);
+				}
+			}
+
+			const result = {
+				success: errors.length === 0,
+				mappings,
+				teamId,
+				totalStatuses: LinearIntegrationHandler.TASKMASTER_STATUSES.length,
+				successfulMappings: Object.keys(mappings).length,
+				failedMappings: errors.length,
+				generatedAt: new Date().toISOString()
+			};
+
+			if (includeDetails) {
+				result.details = details;
+			}
+
+			if (errors.length > 0) {
+				result.errors = errors;
+			}
+
+			log(
+				'info',
+				`Generated ${result.successfulMappings}/${result.totalStatuses} TaskMaster status mappings for team ${teamId}`
+			);
+
+			return result;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to generate TaskMaster UUID mappings for team ${teamId}:`,
+				error.message
+			);
+			return {
+				success: false,
+				error: `Mapping generation failed: ${error.message}`,
+				teamId,
+				totalStatuses: LinearIntegrationHandler.TASKMASTER_STATUSES.length,
+				successfulMappings: 0,
+				failedMappings: LinearIntegrationHandler.TASKMASTER_STATUSES.length
+			};
+		}
+	}
+
+	/**
+	 * Validate existing TaskMaster status mappings against current Linear states
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} existingMappings - Current UUID mappings to validate
+	 * @param {Object} options - Validation options
+	 * @returns {Promise<Object>} Validation result
+	 */
+	async validateTaskMasterStatusMappings(
+		teamId,
+		existingMappings,
+		options = {}
+	) {
+		const { useCache = true } = options;
+
+		try {
+			if (!existingMappings || typeof existingMappings !== 'object') {
+				return {
+					success: false,
+					error: 'Existing mappings object is required',
+					teamId
+				};
+			}
+
+			// Get current workflow states
+			const statesData = await this.queryWorkflowStates(teamId, { useCache });
+			if (!statesData || !statesData.states) {
+				return {
+					success: false,
+					error: `Could not fetch workflow states for team ${teamId}`,
+					teamId
+				};
+			}
+
+			const validMappings = {};
+			const invalidMappings = {};
+			const missingMappings = [];
+
+			// Check each existing mapping
+			for (const [taskMasterStatus, uuid] of Object.entries(existingMappings)) {
+				if (!uuid) {
+					invalidMappings[taskMasterStatus] = 'Missing UUID';
+					continue;
+				}
+
+				const matchedState = statesData.states.find(
+					(state) => state.id === uuid
+				);
+				if (matchedState) {
+					validMappings[taskMasterStatus] = {
+						uuid,
+						stateName: matchedState.name,
+						stateType: matchedState.type
+					};
+				} else {
+					invalidMappings[taskMasterStatus] =
+						`UUID ${uuid} not found in Linear workspace`;
+				}
+			}
+
+			// Check for missing TaskMaster statuses
+			for (const taskMasterStatus of LinearIntegrationHandler.TASKMASTER_STATUSES) {
+				if (!existingMappings[taskMasterStatus]) {
+					missingMappings.push(taskMasterStatus);
+				}
+			}
+
+			const result = {
+				success:
+					Object.keys(invalidMappings).length === 0 &&
+					missingMappings.length === 0,
+				teamId,
+				validMappings,
+				invalidMappings,
+				missingMappings,
+				totalMappings: Object.keys(existingMappings).length,
+				validCount: Object.keys(validMappings).length,
+				invalidCount: Object.keys(invalidMappings).length,
+				missingCount: missingMappings.length,
+				validatedAt: new Date().toISOString()
+			};
+
+			log(
+				'info',
+				`Validated TaskMaster mappings for team ${teamId}: ${result.validCount} valid, ${result.invalidCount} invalid, ${result.missingCount} missing`
+			);
+
+			return result;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to validate TaskMaster mappings for team ${teamId}:`,
+				error.message
+			);
+			return {
+				success: false,
+				error: `Validation failed: ${error.message}`,
+				teamId
+			};
+		}
+	}
+
+	/**
+	 * Get unmapped TaskMaster statuses for a team
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} existingMappings - Current mappings to check
+	 * @returns {Promise<Array>} Array of unmapped TaskMaster statuses
+	 */
+	async getUnmappedTaskMasterStatuses(teamId, existingMappings = {}) {
+		try {
+			const unmapped = [];
+
+			for (const taskMasterStatus of LinearIntegrationHandler.TASKMASTER_STATUSES) {
+				if (!existingMappings[taskMasterStatus]) {
+					unmapped.push(taskMasterStatus);
+				}
+			}
+
+			return unmapped;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to get unmapped TaskMaster statuses for team ${teamId}:`,
+				error.message
+			);
+			return LinearIntegrationHandler.TASKMASTER_STATUSES;
+		}
+	}
+
+	// =============================================================================
 	// FORMATTED MESSAGING SYSTEM
 	// =============================================================================
 

@@ -611,4 +611,487 @@ describe('LinearIntegrationHandler - Workflow States', () => {
 			expect(capabilities.queryWorkflowStates).toBe(true);
 		});
 	});
+
+	describe('TaskMaster Status Mapping', () => {
+		beforeEach(() => {
+			// Set up cached states for TaskMaster mapping tests
+			const mockStatesData = {
+				states: [
+					{ id: 'state-1', name: 'Todo', type: 'unstarted' },
+					{ id: 'state-2', name: 'In Progress', type: 'started' },
+					{ id: 'state-3', name: 'In Review', type: 'started' },
+					{ id: 'state-4', name: 'Done', type: 'completed' },
+					{ id: 'state-5', name: 'Cancelled', type: 'canceled' },
+					{ id: 'state-6', name: 'Backlog', type: 'unstarted' }
+				],
+				stateNameMap: {
+					Todo: 'state-1',
+					todo: 'state-1',
+					'In Progress': 'state-2',
+					'in progress': 'state-2',
+					'In Review': 'state-3',
+					'in review': 'state-3',
+					Done: 'state-4',
+					done: 'state-4',
+					Cancelled: 'state-5',
+					cancelled: 'state-5',
+					Backlog: 'state-6',
+					backlog: 'state-6'
+				}
+			};
+
+			handler._workflowStatesCache = new Map();
+			handler._workflowStatesCache.set(mockTeamId, {
+				data: mockStatesData,
+				cachedAt: Date.now()
+			});
+		});
+
+		describe('resolveTaskMasterStatusToLinearUUID', () => {
+			test('should resolve pending status to Todo state', async () => {
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'pending'
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.uuid).toBe('state-1');
+				expect(result.stateName).toBe('Todo');
+				expect(result.taskMasterStatus).toBe('pending');
+				expect(result.matchType).toBe('exact');
+			});
+
+			test('should resolve in-progress status to In Progress state', async () => {
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'in-progress'
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.uuid).toBe('state-2');
+				expect(result.stateName).toBe('In Progress');
+				expect(result.taskMasterStatus).toBe('in-progress');
+				expect(result.matchType).toBe('exact');
+			});
+
+			test('should resolve review status to In Review state', async () => {
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'review'
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.uuid).toBe('state-3');
+				expect(result.stateName).toBe('In Review');
+				expect(result.taskMasterStatus).toBe('review');
+				expect(result.matchType).toBe('exact');
+			});
+
+			test('should resolve done status to Done state', async () => {
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'done'
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.uuid).toBe('state-4');
+				expect(result.stateName).toBe('Done');
+				expect(result.taskMasterStatus).toBe('done');
+				expect(result.matchType).toBe('exact');
+			});
+
+			test('should resolve cancelled status to Cancelled state', async () => {
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'cancelled'
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.uuid).toBe('state-5');
+				expect(result.stateName).toBe('Cancelled');
+				expect(result.taskMasterStatus).toBe('cancelled');
+				expect(result.matchType).toBe('exact');
+			});
+
+			test('should resolve deferred status to Backlog state', async () => {
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'deferred'
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.uuid).toBe('state-6');
+				expect(result.stateName).toBe('Backlog');
+				expect(result.taskMasterStatus).toBe('deferred');
+				expect(result.matchType).toBe('exact');
+			});
+
+			test('should handle case variations in TaskMaster status', async () => {
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'IN-PROGRESS'
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.uuid).toBe('state-2');
+				expect(result.stateName).toBe('In Progress');
+			});
+
+			test('should return error for invalid TaskMaster status', async () => {
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'invalid-status'
+				);
+
+				expect(result.success).toBe(false);
+				expect(result.error).toContain('Invalid TaskMaster status');
+				expect(result.taskMasterStatus).toBe('invalid-status');
+			});
+
+			test('should return error for missing TaskMaster status', async () => {
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					null
+				);
+
+				expect(result.success).toBe(false);
+				expect(result.error).toContain('TaskMaster status is required');
+			});
+
+			test('should return error when Linear state not found', async () => {
+				// Set up states without Todo
+				const statesWithoutTodo = {
+					states: [
+						{ id: 'state-2', name: 'In Progress', type: 'started' },
+						{ id: 'state-4', name: 'Done', type: 'completed' }
+					]
+				};
+
+				handler._workflowStatesCache.set(mockTeamId, {
+					data: statesWithoutTodo,
+					cachedAt: Date.now()
+				});
+
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'pending'
+				);
+
+				expect(result.success).toBe(false);
+				expect(result.error).toContain('Could not find Linear state matching');
+				expect(result.taskMasterStatus).toBe('pending');
+				expect(result.possibleStateNames).toEqual(['Todo', 'Backlog']);
+			});
+
+			test('should use case-insensitive matching when exact match fails', async () => {
+				// Set up states with different case
+				const statesWithCaseVariation = {
+					states: [
+						{ id: 'state-1', name: 'todo', type: 'unstarted' }, // lowercase
+						{ id: 'state-2', name: 'IN PROGRESS', type: 'started' } // uppercase
+					]
+				};
+
+				handler._workflowStatesCache.set(mockTeamId, {
+					data: statesWithCaseVariation,
+					cachedAt: Date.now()
+				});
+
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'pending'
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.uuid).toBe('state-1');
+				expect(result.stateName).toBe('todo');
+				expect(result.matchType).toBe('case-insensitive');
+			});
+
+			test('should use fuzzy matching as fallback', async () => {
+				// Set up states with similar but not exact names
+				const statesWithSimilarNames = {
+					states: [
+						{ id: 'state-1', name: 'To Do', type: 'unstarted' }, // Similar to "Todo"
+						{ id: 'state-2', name: 'Work In Progress', type: 'started' } // Similar to "In Progress"
+					]
+				};
+
+				handler._workflowStatesCache.set(mockTeamId, {
+					data: statesWithSimilarNames,
+					cachedAt: Date.now()
+				});
+
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'pending'
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.uuid).toBe('state-1');
+				expect(result.stateName).toBe('To Do');
+				expect(result.matchType).toBe('fuzzy');
+			});
+
+			test('should skip fuzzy matching when disabled', async () => {
+				// Set up states with similar but not exact names
+				const statesWithSimilarNames = {
+					states: [{ id: 'state-1', name: 'To Do', type: 'unstarted' }]
+				};
+
+				handler._workflowStatesCache.set(mockTeamId, {
+					data: statesWithSimilarNames,
+					cachedAt: Date.now()
+				});
+
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					mockTeamId,
+					'pending',
+					{ allowFuzzyFallback: false }
+				);
+
+				expect(result.success).toBe(false);
+				expect(result.error).toContain('Could not find Linear state matching');
+			});
+		});
+
+		describe('generateTaskMasterUUIDMappings', () => {
+			test('should generate complete UUID mappings for all TaskMaster statuses', async () => {
+				const result = await handler.generateTaskMasterUUIDMappings(mockTeamId);
+
+				expect(result.success).toBe(true);
+				expect(result.mappings).toEqual({
+					pending: 'state-1',
+					'in-progress': 'state-2',
+					review: 'state-3',
+					done: 'state-4',
+					cancelled: 'state-5',
+					deferred: 'state-6'
+				});
+				expect(result.teamId).toBe(mockTeamId);
+				expect(result.totalStatuses).toBe(6);
+				expect(result.successfulMappings).toBe(6);
+				expect(result.failedMappings).toBe(0);
+			});
+
+			test('should include details when requested', async () => {
+				const result = await handler.generateTaskMasterUUIDMappings(
+					mockTeamId,
+					{
+						includeDetails: true
+					}
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.details).toBeDefined();
+				expect(result.details.pending).toEqual({
+					uuid: 'state-1',
+					stateName: 'Todo',
+					stateType: 'unstarted',
+					matchType: 'exact'
+				});
+			});
+
+			test('should handle partial mapping failures', async () => {
+				// Set up states missing some required states
+				const incompleteStates = {
+					states: [
+						{ id: 'state-2', name: 'In Progress', type: 'started' },
+						{ id: 'state-4', name: 'Done', type: 'completed' }
+					]
+				};
+
+				handler._workflowStatesCache.set(mockTeamId, {
+					data: incompleteStates,
+					cachedAt: Date.now()
+				});
+
+				const result = await handler.generateTaskMasterUUIDMappings(mockTeamId);
+
+				expect(result.success).toBe(false);
+				expect(result.successfulMappings).toBe(2);
+				expect(result.failedMappings).toBe(4);
+				expect(result.mappings).toEqual({
+					'in-progress': 'state-2',
+					done: 'state-4'
+				});
+				expect(result.errors).toHaveLength(4);
+			});
+
+			test('should handle API errors gracefully', async () => {
+				// Create a handler with no cache
+				const errorHandler = new LinearIntegrationHandler(mockConfig);
+				errorHandler.linear = mockLinear;
+
+				// Mock the resolveTaskMasterStatusToLinearUUID method to throw an error
+				// This will trigger the catch block in generateTaskMasterUUIDMappings
+				errorHandler.resolveTaskMasterStatusToLinearUUID = jest
+					.fn()
+					.mockRejectedValue(new Error('API Error'));
+
+				const result =
+					await errorHandler.generateTaskMasterUUIDMappings(mockTeamId);
+
+				expect(result.success).toBe(false);
+				expect(result.error).toContain('Mapping generation failed');
+				expect(result.successfulMappings).toBe(0);
+				expect(result.failedMappings).toBe(6);
+			});
+		});
+
+		describe('validateTaskMasterStatusMappings', () => {
+			test('should validate correct UUID mappings', async () => {
+				const existingMappings = {
+					pending: 'state-1',
+					'in-progress': 'state-2',
+					review: 'state-3',
+					done: 'state-4',
+					cancelled: 'state-5',
+					deferred: 'state-6'
+				};
+
+				const result = await handler.validateTaskMasterStatusMappings(
+					mockTeamId,
+					existingMappings
+				);
+
+				expect(result.success).toBe(true);
+				expect(result.validCount).toBe(6);
+				expect(result.invalidCount).toBe(0);
+				expect(result.missingCount).toBe(0);
+				expect(Object.keys(result.validMappings)).toHaveLength(6);
+			});
+
+			test('should identify invalid UUIDs', async () => {
+				const existingMappings = {
+					pending: 'invalid-uuid',
+					'in-progress': 'state-2'
+				};
+
+				const result = await handler.validateTaskMasterStatusMappings(
+					mockTeamId,
+					existingMappings
+				);
+
+				expect(result.success).toBe(false);
+				expect(result.validCount).toBe(1);
+				expect(result.invalidCount).toBe(1);
+				expect(result.missingCount).toBe(4);
+				expect(result.invalidMappings.pending).toContain(
+					'not found in Linear workspace'
+				);
+			});
+
+			test('should identify missing mappings', async () => {
+				const incompleteMapping = {
+					pending: 'state-1'
+				};
+
+				const result = await handler.validateTaskMasterStatusMappings(
+					mockTeamId,
+					incompleteMapping
+				);
+
+				expect(result.success).toBe(false);
+				expect(result.validCount).toBe(1);
+				expect(result.missingCount).toBe(5);
+				expect(result.missingMappings).toEqual([
+					'in-progress',
+					'review',
+					'done',
+					'cancelled',
+					'deferred'
+				]);
+			});
+
+			test('should handle missing mappings object', async () => {
+				const result = await handler.validateTaskMasterStatusMappings(
+					mockTeamId,
+					null
+				);
+
+				expect(result.success).toBe(false);
+				expect(result.error).toContain('Existing mappings object is required');
+			});
+		});
+
+		describe('getUnmappedTaskMasterStatuses', () => {
+			test('should return empty array for complete mappings', async () => {
+				const completeMappings = {
+					pending: 'state-1',
+					'in-progress': 'state-2',
+					review: 'state-3',
+					done: 'state-4',
+					cancelled: 'state-5',
+					deferred: 'state-6'
+				};
+
+				const unmapped = await handler.getUnmappedTaskMasterStatuses(
+					mockTeamId,
+					completeMappings
+				);
+
+				expect(unmapped).toEqual([]);
+			});
+
+			test('should return missing statuses', async () => {
+				const incompleteMappings = {
+					pending: 'state-1',
+					done: 'state-4'
+				};
+
+				const unmapped = await handler.getUnmappedTaskMasterStatuses(
+					mockTeamId,
+					incompleteMappings
+				);
+
+				expect(unmapped).toEqual([
+					'in-progress',
+					'review',
+					'cancelled',
+					'deferred'
+				]);
+			});
+
+			test('should return all statuses for empty mappings', async () => {
+				const unmapped = await handler.getUnmappedTaskMasterStatuses(
+					mockTeamId,
+					{}
+				);
+
+				expect(unmapped).toEqual([
+					'pending',
+					'in-progress',
+					'review',
+					'done',
+					'cancelled',
+					'deferred'
+				]);
+			});
+		});
+
+		describe('TaskMaster Status Constants', () => {
+			test('should have correct default mappings', () => {
+				expect(LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS).toEqual({
+					pending: ['Todo', 'Backlog'],
+					'in-progress': ['In Progress'],
+					review: ['In Review'],
+					done: ['Done', 'Completed'],
+					cancelled: ['Canceled', 'Cancelled'],
+					deferred: ['Backlog', 'On Hold']
+				});
+			});
+
+			test('should have correct list of TaskMaster statuses', () => {
+				expect(LinearIntegrationHandler.TASKMASTER_STATUSES).toEqual([
+					'pending',
+					'in-progress',
+					'review',
+					'done',
+					'cancelled',
+					'deferred'
+				]);
+			});
+		});
+	});
 });

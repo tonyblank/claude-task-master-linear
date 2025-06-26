@@ -365,15 +365,15 @@
       {
         "id": 6,
         "title": "Implement Linear Workflow State Mapping",
-        "description": "Fetch Linear team's workflow states and create mapping between Taskmaster statuses and Linear state IDs",
-        "details": "Query Linear API for team's workflow states using linearClient.workflowStates({ filter: { team: { id: teamId } } }). Create mapping logic to match Taskmaster statuses (pending, in-progress, review, done, cancelled) to Linear states by name. Store state IDs in config or memory cache. Implement fallback logic if exact state names don't match (e.g., 'In Progress' vs 'in-progress'). Add configuration option for custom state mapping overrides. Consider adding 'ready' status to Taskmaster for 'Ready for Merge' state. Handle teams with custom workflows gracefully.",
-        "testStrategy": "Test with various Linear workflow configurations including custom state names. Verify correct state ID retrieval and storage. Test fallback behavior when states don't match. Test state mapping updates when team workflow changes",
-        "priority": "high",
+        "description": "Fetch Linear team's workflow states and create mapping between Taskmaster statuses and Linear state IDs (UUIDs)",
+        "status": "pending",
         "dependencies": [
           1,
           5
         ],
-        "status": "pending",
+        "priority": "high",
+        "details": "Query Linear API for team's workflow states using linearClient.workflowStates({ filter: { team: { id: teamId } } }). Create direct mapping logic to match the 6 TaskMaster statuses (pending, in-progress, review, done, cancelled, deferred) to Linear state IDs (UUIDs) using sensible defaults and exact name matching. The current statusMapping in config stores state names like 'Todo', 'In Progress' but Linear API requires actual state UUIDs like 'state-uuid-123'. Implement exact name matching to resolve state names to actual Linear state IDs and store those IDs in the configuration system. Define sensible default mappings (e.g., pending → 'Todo', in-progress → 'In Progress', review → 'In Review', done → 'Done', cancelled → 'Canceled', deferred → 'Backlog'). Handle teams with custom workflows gracefully with clear error messages when mappings are missing. Implement mechanism to refresh state mappings when Linear workflows change and integrate with existing setup wizard.",
+        "testStrategy": "Test with various Linear workflow configurations including custom state names. Verify correct state ID (UUID) retrieval and storage. Test fallback behavior when states don't match. Test state mapping updates when team workflow changes. Verify integration with setup wizard.",
         "subtasks": [
           {
             "id": 1,
@@ -390,8 +390,8 @@
             "dependencies": [
               1
             ],
-            "details": "Develop a matching algorithm that handles variations in naming conventions (e.g., 'In Progress' vs 'in-progress' vs 'InProgress'). Include similarity scoring, case-insensitive matching, and common abbreviation handling.",
-            "status": "in-progress"
+            "details": "Create simple direct mapping between TaskMaster task statuses and Linear workflow state UUIDs. The implementation will:\n\n1) Define sensible default mappings for the 6 TaskMaster statuses to common Linear state names:\n   - pending → \"Todo\" or \"Backlog\"\n   - in-progress → \"In Progress\"\n   - review → \"In Review\"\n   - done → \"Done\" or \"Completed\"\n   - cancelled → \"Canceled\" or \"Cancelled\"\n   - deferred → \"Backlog\" or \"On Hold\"\n\n2) Implement direct name-to-UUID resolution using existing workflow state data from the Linear API. This will involve exact string matching between the default Linear state names and the actual state names in the user's Linear workspace.\n\n3) Generate complete UUID mappings for configuration storage, ensuring that each TaskMaster status is mapped to a valid Linear state UUID. This mapping will be stored in the configuration to enable direct status translation without repeated lookups.\n\n4) Use exact name matching with clear error handling for missing states. If a Linear workspace doesn't have an exact match for a default mapping, provide clear error messages to guide the user to manually configure the mapping in settings.",
+            "status": "done"
           },
           {
             "id": 3,
@@ -402,17 +402,17 @@
               2
             ],
             "details": "Build an in-memory cache with TTL support to store state ID mappings. Include cache invalidation strategies and persistence options for frequently used mappings.",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 4,
             "title": "Build custom mapping override system",
-            "description": "Create configuration system allowing users to define custom GitHub-to-Linear state mappings",
+            "description": "Create configuration system allowing users to define custom TaskMaster-to-Linear state mappings",
             "dependencies": [
               2,
               3
             ],
-            "details": "Implement a configuration file or database schema for custom mappings. Support regex patterns, exact matches, and priority ordering. Include validation and conflict resolution.",
+            "details": "Enhance the TaskMaster configuration system to store direct TaskMaster-to-Linear state mappings using Linear state UUIDs. Modify the integrations.linear.labels.statusMapping structure to support simple UUID-based references while maintaining backward compatibility with state names. Implement validation to ensure mapped state names exist in the user's Linear workspace and that UUIDs are properly formatted. Create a utility function that allows users to easily update state name mappings in the configuration and automatically regenerate the corresponding UUIDs. Add clear documentation explaining the simplified mapping approach and how to configure it correctly. Include a migration path for users transitioning from previous configuration formats.",
             "status": "pending"
           },
           {
@@ -423,7 +423,7 @@
               2,
               4
             ],
-            "details": "Add logic to handle missing states, circular dependencies, archived workflows, and team-specific configurations. Implement sensible defaults and user notifications for unmapped states.",
+            "details": "Add logic to handle missing states, circular dependencies, archived workflows, and team-specific configurations. Implement sensible defaults and user notifications for unmapped states. Provide clear error messages when exact matches for default mappings aren't found in a Linear workspace, guiding users to manually configure the mapping in settings.",
             "status": "pending"
           },
           {
@@ -437,8 +437,53 @@
               4,
               5
             ],
-            "details": "Write unit tests for matching logic, integration tests for API queries, and end-to-end tests for complete workflow mapping scenarios. Include performance tests for caching and mock various Linear workflow configurations.",
+            "details": "Expand test coverage to focus on the direct mapping approach:\n\n1. Test direct mapping of 6 TaskMaster statuses to Linear state UUIDs:\n   - Verify correct mapping of each status to its corresponding UUID\n   - Test state resolution with exact name matching only\n   - Ensure consistent mapping across multiple resolution attempts\n\n2. Test configuration storage and retrieval:\n   - Verify UUID mappings are properly stored in configuration\n   - Test loading mappings from configuration during initialization\n   - Ensure configuration persistence across application restarts\n\n3. Test validation of state names:\n   - Verify state names exist in Linear workspace before mapping\n   - Test handling of renamed states in Linear\n   - Validate state name case sensitivity handling\n\n4. Test error handling:\n   - Test behavior when state mappings are missing\n   - Verify appropriate error messages for unmapped states\n   - Test recovery mechanisms when mappings become invalid\n\n5. Test setup wizard integration:\n   - Verify wizard correctly generates initial mappings\n   - Test user interface for manual mapping adjustments\n   - Ensure mappings are properly saved after wizard completion\n\nPerformance tests should focus on direct lookups and configuration access speed. Mock Linear workflows should use simple, representative state configurations with standard UUID formats.",
             "status": "pending"
+          },
+          {
+            "id": 7,
+            "title": "Convert state names to state UUIDs in configuration",
+            "description": "Update configuration system to store Linear state UUIDs instead of state names",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Update the configuration system to store Linear state UUIDs directly instead of state names for the 6 TaskMaster statuses (Todo, In Progress, Blocked, In Review, Done, Canceled). Implement straightforward migration logic to convert existing name-based configurations to UUID-based configurations. Ensure all Linear API calls reference these UUIDs directly from the configuration when creating or updating issues. Focus on a simple, direct UUID lookup approach that minimizes complexity while maintaining backward compatibility during the transition period.",
+            "status": "pending"
+          },
+          {
+            "id": 8,
+            "title": "Implement state mapping refresh mechanism",
+            "description": "Create system to detect and handle changes in Linear workflow states",
+            "dependencies": [
+              3,
+              7
+            ],
+            "details": "Develop logic to periodically check for changes in Linear workflow states. Update cached mappings when changes are detected. Implement notification system for breaking changes that require user intervention.",
+            "status": "pending"
+          },
+          {
+            "id": 9,
+            "title": "Integrate with setup wizard",
+            "description": "Connect state mapping functionality with existing setup wizard",
+            "dependencies": [
+              7,
+              8
+            ],
+            "details": "Enhance the existing linear-sync-setup command (the setup wizard) to include workflow state mapping configuration. The setup wizard should be the primary way users configure state mappings initially and also serve as the recommended recovery method if configurations become corrupted. Provide UI for reviewing and customizing state mappings during the setup flow. Include validation and testing options within the wizard to ensure proper mapping configuration before completion.",
+            "status": "pending"
+          },
+          {
+            "id": 10,
+            "title": "Create command-line utilities for manual state mapping operations",
+            "description": "Implement CLI commands for manually refreshing, validating, and debugging state mappings",
+            "details": "Create command-line utilities that allow users to manually manage and troubleshoot state name mappings with Linear. Commands should include:\n\n1. 'linear-refresh-mappings': Regenerate UUID mappings from current configuration state names\n2. 'linear-validate-mappings': Check if configured state names exist in Linear\n3. 'linear-debug-mappings': Display current mappings and their status\n\nThese utilities should be simple and focused on the direct mapping functionality, providing clear feedback on mapping operations and errors. They serve as manual alternatives when automatic mapping needs verification or troubleshooting.",
+            "status": "pending",
+            "dependencies": [
+              "6.7",
+              "6.8"
+            ],
+            "parentTaskId": 6
           }
         ]
       },
@@ -2297,7 +2342,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-26T18:37:07.375Z",
+      "updated": "2025-06-26T21:08:38.089Z",
       "description": "Tasks for master context"
     }
   }
