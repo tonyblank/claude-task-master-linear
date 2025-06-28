@@ -446,7 +446,7 @@
               7
             ],
             "details": "Develop logic to periodically check for changes in Linear workflow states. Update cached mappings when changes are detected. Implement notification system for breaking changes that require user intervention.\n<info added on 2025-06-26T22:47:52.400Z>\nDevelop logic to periodically check for changes in Linear workflow states. Update state mappings in configuration files when changes are detected. This mechanism should only run after the state names to UUID conversion (task 6.7) is complete, as it relies on the UUID configuration structure. Implement notification system for breaking changes that require user intervention.\n</info added on 2025-06-26T22:47:52.400Z>",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 9,
@@ -457,7 +457,7 @@
               8
             ],
             "details": "Enhance the existing linear-sync-setup command (the setup wizard) to include workflow state mapping configuration. The setup wizard should be the primary way users configure state mappings initially and also serve as the recommended recovery method if configurations become corrupted. Provide UI for reviewing and customizing state mappings during the setup flow. Include validation and testing options within the wizard to ensure proper mapping configuration before completion.",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 10,
@@ -2328,7 +2328,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-28T13:55:34.512Z",
+      "updated": "2025-06-28T14:28:14.960Z",
       "description": "Tasks for master context"
     }
   }

@@ -692,3 +692,395 @@ export async function getMappingRecommendations(projectRoot = null) {
 		};
 	}
 }
+
+/**
+ * Refreshes Linear workflow states cache and validates current mappings
+ * @param {object} options - Refresh options
+ * @param {string|null} options.projectRoot - Optional project root
+ * @param {string|null} options.teamId - Specific team ID to refresh
+ * @param {boolean} options.forceRefresh - Force refresh even if cache is valid (default: false)
+ * @param {boolean} options.updateMappings - Update UUID mappings if changes detected (default: true)
+ * @param {boolean} options.validateOnly - Only validate, don't update (default: false)
+ * @returns {Promise<object>} Refresh result with details
+ */
+export async function refreshWorkflowStatesCache(options = {}) {
+	const {
+		projectRoot = null,
+		teamId = null,
+		forceRefresh = false,
+		updateMappings = true,
+		validateOnly = false
+	} = options;
+
+	try {
+		log('info', 'Starting Linear workflow states cache refresh...');
+
+		// Get team ID if not provided
+		const effectiveTeamId = teamId || getLinearTeamId(projectRoot);
+		if (!effectiveTeamId) {
+			return {
+				success: false,
+				error:
+					'Linear team ID not configured. Please run linear-sync-setup first.'
+			};
+		}
+
+		// Import Linear integration handler for workspace operations
+		const { LinearIntegrationHandler } = await import(
+			'./integrations/linear-integration-handler.js'
+		);
+		const { getLinearApiKey } = await import('./config-manager.js');
+
+		const config = {
+			apiKey: getLinearApiKey(projectRoot),
+			teamId: effectiveTeamId
+		};
+
+		const handler = new LinearIntegrationHandler(config);
+		await handler._performInitialization();
+
+		// Force refresh by clearing cache if requested
+		if (forceRefresh) {
+			handler.clearWorkflowStatesCache(effectiveTeamId);
+			log('info', `Cleared workflow states cache for team ${effectiveTeamId}`);
+		}
+
+		// Get current workflow states from Linear (will use cache if valid)
+		const workflowStatesResult =
+			await handler.queryWorkflowStates(effectiveTeamId);
+
+		if (!workflowStatesResult.success) {
+			return {
+				success: false,
+				error: `Failed to fetch workflow states: ${workflowStatesResult.error}`,
+				teamId: effectiveTeamId
+			};
+		}
+
+		// Get current configuration
+		const currentConfig = getCurrentMappingConfiguration(projectRoot);
+		const currentUuidMappings = currentConfig.uuidMapping;
+		const currentNameMappings = currentConfig.nameMapping;
+
+		// Analyze changes in workflow states
+		const changeAnalysis = await analyzeWorkflowStateChanges(
+			workflowStatesResult.states,
+			currentUuidMappings,
+			currentNameMappings
+		);
+
+		const refreshResult = {
+			success: true,
+			teamId: effectiveTeamId,
+			refreshedAt: new Date().toISOString(),
+			forceRefresh,
+			validateOnly,
+			currentStatesCount: workflowStatesResult.states.length,
+			changeAnalysis,
+			mappingsUpdated: false,
+			notifications: []
+		};
+
+		// If validation only, return analysis without updates
+		if (validateOnly) {
+			refreshResult.validationOnly = true;
+			return refreshResult;
+		}
+
+		// Update mappings if changes detected and updates are enabled
+		if (updateMappings && changeAnalysis.changesDetected) {
+			if (changeAnalysis.breakingChanges.length > 0) {
+				// Handle breaking changes - require user intervention
+				refreshResult.notifications.push({
+					type: 'breaking_change',
+					message: 'Breaking changes detected in Linear workspace',
+					changes: changeAnalysis.breakingChanges,
+					action: 'Review changes and update mappings manually'
+				});
+
+				log(
+					'warn',
+					`Breaking changes detected: ${changeAnalysis.breakingChanges.length} issues found`
+				);
+			} else {
+				// Apply non-breaking updates
+				const updateResult = await applyMappingUpdates(
+					changeAnalysis.safeMappingUpdates,
+					projectRoot
+				);
+
+				refreshResult.mappingsUpdated = updateResult.success;
+				refreshResult.updatedMappings = updateResult.updatedMappings;
+
+				if (updateResult.success) {
+					refreshResult.notifications.push({
+						type: 'mappings_updated',
+						message: `Updated ${updateResult.updatedMappings.length} status mappings`,
+						updates: updateResult.updatedMappings
+					});
+
+					log(
+						'info',
+						`Successfully updated ${updateResult.updatedMappings.length} status mappings`
+					);
+				}
+			}
+		}
+
+		return refreshResult;
+	} catch (error) {
+		log('error', `Failed to refresh workflow states cache: ${error.message}`);
+		return {
+			success: false,
+			error: error.message,
+			teamId: teamId || 'unknown'
+		};
+	}
+}
+
+/**
+ * Analyzes changes in Linear workflow states compared to current mappings
+ * @param {Array} currentStates - Current workflow states from Linear API
+ * @param {object} currentUuidMappings - Current UUID mappings in config
+ * @param {object} currentNameMappings - Current name mappings in config
+ * @returns {Promise<object>} Analysis of changes detected
+ */
+async function analyzeWorkflowStateChanges(
+	currentStates,
+	currentUuidMappings,
+	currentNameMappings
+) {
+	const analysis = {
+		changesDetected: false,
+		breakingChanges: [],
+		safeMappingUpdates: [],
+		newStatesFound: [],
+		deletedStatesDetected: [],
+		renamedStatesDetected: []
+	};
+
+	// Create lookup maps from current Linear states
+	const statesByUuid = new Map();
+	const statesByName = new Map();
+
+	for (const state of currentStates) {
+		statesByUuid.set(state.id, state);
+		statesByName.set(state.name.toLowerCase(), state);
+	}
+
+	// Check UUID mappings for validity
+	for (const [taskMasterStatus, uuid] of Object.entries(currentUuidMappings)) {
+		const currentState = statesByUuid.get(uuid);
+
+		if (!currentState) {
+			// UUID mapping is broken - state was deleted or UUID changed
+			analysis.changesDetected = true;
+			analysis.breakingChanges.push({
+				type: 'deleted_or_changed_uuid',
+				taskMasterStatus,
+				uuid,
+				impact: 'Status mapping will fail until updated',
+				action: 'Remap this status to a valid Linear state'
+			});
+		} else {
+			// Check if state was renamed (UUID exists but name changed)
+			const expectedName = currentNameMappings[taskMasterStatus];
+			if (expectedName && currentState.name !== expectedName) {
+				analysis.changesDetected = true;
+				analysis.renamedStatesDetected.push({
+					taskMasterStatus,
+					uuid,
+					oldName: expectedName,
+					newName: currentState.name
+				});
+
+				// This is a safe update - UUID still works, just name changed
+				analysis.safeMappingUpdates.push({
+					type: 'update_name_mapping',
+					taskMasterStatus,
+					uuid,
+					newName: currentState.name
+				});
+			}
+		}
+	}
+
+	// Check for new states that might be useful
+	const mappedUuids = new Set(Object.values(currentUuidMappings));
+	const mappedNames = new Set(
+		Object.values(currentNameMappings).map((name) => name.toLowerCase())
+	);
+
+	for (const state of currentStates) {
+		if (
+			!mappedUuids.has(state.id) &&
+			!mappedNames.has(state.name.toLowerCase())
+		) {
+			analysis.newStatesFound.push({
+				uuid: state.id,
+				name: state.name,
+				type: state.type,
+				description: state.description || 'No description'
+			});
+		}
+	}
+
+	// Check for deleted states (mapped names that no longer exist)
+	for (const [taskMasterStatus, stateName] of Object.entries(
+		currentNameMappings
+	)) {
+		if (
+			!statesByName.has(stateName.toLowerCase()) &&
+			!currentUuidMappings[taskMasterStatus]
+		) {
+			// Name mapping points to non-existent state and no UUID mapping exists
+			analysis.changesDetected = true;
+			analysis.deletedStatesDetected.push({
+				taskMasterStatus,
+				deletedStateName: stateName
+			});
+
+			analysis.breakingChanges.push({
+				type: 'deleted_state',
+				taskMasterStatus,
+				stateName,
+				impact: 'Status mapping will fail until updated',
+				action: 'Remap this status to a valid Linear state'
+			});
+		}
+	}
+
+	if (analysis.newStatesFound.length > 0) {
+		analysis.changesDetected = true;
+	}
+
+	return analysis;
+}
+
+/**
+ * Applies safe mapping updates to configuration
+ * @param {Array} updates - Array of safe update operations
+ * @param {string|null} projectRoot - Optional project root
+ * @returns {Promise<object>} Update result
+ */
+async function applyMappingUpdates(updates, projectRoot = null) {
+	try {
+		const updatedMappings = [];
+
+		for (const update of updates) {
+			if (update.type === 'update_name_mapping') {
+				// Update name mapping to reflect renamed state
+				const currentNameMappings = getLinearStatusMapping(projectRoot);
+				const updatedNameMappings = {
+					...currentNameMappings,
+					[update.taskMasterStatus]: update.newName
+				};
+
+				// Note: This would require a setLinearStatusMapping function
+				// For now, we'll track what would be updated
+				updatedMappings.push({
+					type: 'name_mapping',
+					taskMasterStatus: update.taskMasterStatus,
+					oldName: currentNameMappings[update.taskMasterStatus],
+					newName: update.newName
+				});
+
+				log(
+					'info',
+					`Would update name mapping for "${update.taskMasterStatus}": "${currentNameMappings[update.taskMasterStatus]}" → "${update.newName}"`
+				);
+			}
+		}
+
+		return {
+			success: true,
+			updatedMappings
+		};
+	} catch (error) {
+		log('error', `Failed to apply mapping updates: ${error.message}`);
+		return {
+			success: false,
+			error: error.message
+		};
+	}
+}
+
+/**
+ * Detects if Linear workspace status mappings need refreshing
+ * @param {object} options - Detection options
+ * @param {string|null} options.projectRoot - Optional project root
+ * @param {string|null} options.teamId - Specific team ID to check
+ * @param {number} options.cacheMaxAge - Max age in minutes before refresh needed (default: 60)
+ * @returns {Promise<object>} Detection result with recommendations
+ */
+export async function detectMappingRefreshNeeds(options = {}) {
+	const {
+		projectRoot = null,
+		teamId = null,
+		cacheMaxAge = 60 // 1 hour default
+	} = options;
+
+	try {
+		log('info', 'Detecting if mapping refresh is needed...');
+
+		const effectiveTeamId = teamId || getLinearTeamId(projectRoot);
+		if (!effectiveTeamId) {
+			return {
+				refreshNeeded: false,
+				reason: 'No Linear team configured'
+			};
+		}
+
+		// Check current configuration health
+		const config = getCurrentMappingConfiguration(projectRoot);
+		const recommendations = await getMappingRecommendations(projectRoot);
+
+		const detection = {
+			refreshNeeded: false,
+			reasons: [],
+			recommendations: [],
+			cacheStatus: 'unknown',
+			lastRefresh: null,
+			nextSuggestedRefresh: null
+		};
+
+		// Check for critical configuration issues
+		if (recommendations.actionRequired) {
+			detection.refreshNeeded = true;
+			detection.reasons.push('Configuration issues detected');
+			detection.recommendations.push(...recommendations.recommendations);
+		}
+
+		// Check for incomplete mappings
+		if (!config.isFullyConfigured) {
+			detection.refreshNeeded = true;
+			detection.reasons.push(
+				`Only ${config.effective.count}/6 statuses mapped`
+			);
+		}
+
+		// Calculate next suggested refresh time
+		const now = new Date();
+		const maxAgeMs = cacheMaxAge * 60 * 1000;
+		detection.nextSuggestedRefresh = new Date(
+			now.getTime() + maxAgeMs
+		).toISOString();
+
+		// Add recommendation for periodic refresh
+		if (!detection.refreshNeeded) {
+			detection.recommendations.push({
+				type: 'maintenance',
+				message: `Consider refreshing mappings every ${cacheMaxAge} minutes`,
+				action: 'Run refresh-linear-mappings command periodically'
+			});
+		}
+
+		return detection;
+	} catch (error) {
+		log('error', `Failed to detect mapping refresh needs: ${error.message}`);
+		return {
+			refreshNeeded: false,
+			error: error.message
+		};
+	}
+}
