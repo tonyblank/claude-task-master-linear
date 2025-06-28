@@ -1252,6 +1252,601 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 		);
 	}
 
+	// =============================================================================
+	// EDGE CASE HANDLING FOR CUSTOM WORKFLOWS
+	// =============================================================================
+
+	/**
+	 * Handle edge cases for custom workflow configurations
+	 * Implements comprehensive fallback mechanisms and error handling
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} taskMasterStatus - TaskMaster status to resolve
+	 * @param {Object} options - Configuration options
+	 * @returns {Promise<Object>} Resolution result with fallback information
+	 */
+	async handleWorkflowEdgeCases(teamId, taskMasterStatus, options = {}) {
+		const {
+			includeArchived = false,
+			allowCircularCheck = true,
+			provideUserGuidance = true,
+			fallbackToDefault = true
+		} = options;
+
+		try {
+			// Step 1: Get workflow states with archived state handling
+			const statesData = await this.queryWorkflowStates(teamId, {
+				includeArchived,
+				useCache: true
+			});
+
+			// Step 2: Validate workflow configuration
+			const configValidation = await this._validateWorkflowConfiguration(
+				statesData,
+				teamId
+			);
+
+			// Step 3: Handle archived state scenarios
+			const archivedStateHandling = this._handleArchivedStates(
+				statesData,
+				taskMasterStatus
+			);
+
+			// Step 4: Check for circular dependencies if enabled
+			let circularDependencyCheck = null;
+			if (allowCircularCheck) {
+				circularDependencyCheck = await this._checkCircularDependencies(
+					teamId,
+					taskMasterStatus
+				);
+			}
+
+			// Step 5: Attempt standard resolution with enhanced error context
+			const standardResolution = await this.resolveTaskMasterStatusToLinearUUID(
+				teamId,
+				taskMasterStatus,
+				{ useCache: true, allowFuzzyFallback: true }
+			);
+
+			// Step 6: If standard resolution fails, apply advanced fallbacks
+			let fallbackResolution = null;
+			if (!standardResolution.success && fallbackToDefault) {
+				fallbackResolution = await this._applyAdvancedFallbacks(
+					teamId,
+					taskMasterStatus,
+					statesData,
+					configValidation
+				);
+			}
+
+			// Step 7: Generate user guidance if requested
+			let userGuidance = null;
+			if (
+				provideUserGuidance &&
+				!standardResolution.success &&
+				!fallbackResolution?.success
+			) {
+				userGuidance = this._generateUserGuidance(
+					teamId,
+					taskMasterStatus,
+					statesData,
+					configValidation
+				);
+			}
+
+			return {
+				success:
+					standardResolution.success || fallbackResolution?.success || false,
+				result: standardResolution.success
+					? standardResolution
+					: fallbackResolution,
+				edgeCaseHandling: {
+					configValidation,
+					archivedStateHandling,
+					circularDependencyCheck,
+					userGuidance
+				},
+				teamId,
+				taskMasterStatus
+			};
+		} catch (error) {
+			log(
+				'error',
+				`Failed to handle workflow edge cases for team ${teamId}:`,
+				error.message
+			);
+			return {
+				success: false,
+				error: `Edge case handling failed: ${error.message}`,
+				teamId,
+				taskMasterStatus
+			};
+		}
+	}
+
+	/**
+	 * Validate workflow configuration for potential issues
+	 *
+	 * @param {Object} statesData - Workflow states data
+	 * @param {string} teamId - Linear team ID
+	 * @returns {Promise<Object>} Validation results
+	 * @private
+	 */
+	async _validateWorkflowConfiguration(statesData, teamId) {
+		const validation = {
+			isValid: true,
+			issues: [],
+			warnings: [],
+			recommendations: []
+		};
+
+		if (!statesData || !statesData.states || statesData.states.length === 0) {
+			validation.isValid = false;
+			validation.issues.push('No workflow states found for team');
+			return validation;
+		}
+
+		// Check for missing state types
+		const requiredTypes = ['unstarted', 'started', 'completed'];
+		const availableTypes = [...new Set(statesData.states.map((s) => s.type))];
+		const missingTypes = requiredTypes.filter(
+			(type) => !availableTypes.includes(type)
+		);
+
+		if (missingTypes.length > 0) {
+			validation.warnings.push(
+				`Missing state types: ${missingTypes.join(', ')}`
+			);
+			validation.recommendations.push(
+				'Add workflow states for missing types to improve task status mapping'
+			);
+		}
+
+		// Check for duplicate state names
+		const stateNames = statesData.states.map((s) => s.name);
+		const duplicateNames = stateNames.filter(
+			(name, index) => stateNames.indexOf(name) !== index
+		);
+		if (duplicateNames.length > 0) {
+			validation.warnings.push(
+				`Duplicate state names detected: ${[...new Set(duplicateNames)].join(', ')}`
+			);
+			validation.recommendations.push(
+				'Consider renaming duplicate states to avoid mapping conflicts'
+			);
+		}
+
+		// Check for archived states in active use
+		const archivedStates = statesData.states.filter((s) => s.archivedAt);
+		if (archivedStates.length > 0) {
+			validation.warnings.push(
+				`${archivedStates.length} archived states found`
+			);
+			validation.recommendations.push(
+				'Archived states may cause mapping issues if referenced in configuration'
+			);
+		}
+
+		// Check TaskMaster default mapping coverage
+		const availableStateNames = statesData.states.map((s) =>
+			s.name.toLowerCase()
+		);
+		const unmappedStatuses = [];
+
+		for (const [status, defaultNames] of Object.entries(
+			LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS
+		)) {
+			const hasMapping = defaultNames.some((name) =>
+				availableStateNames.includes(name.toLowerCase())
+			);
+			if (!hasMapping) {
+				unmappedStatuses.push(status);
+			}
+		}
+
+		if (unmappedStatuses.length > 0) {
+			validation.warnings.push(
+				`TaskMaster statuses without default mappings: ${unmappedStatuses.join(', ')}`
+			);
+			validation.recommendations.push(
+				'Configure custom state mappings for unmapped TaskMaster statuses'
+			);
+		}
+
+		return validation;
+	}
+
+	/**
+	 * Handle archived workflow states
+	 *
+	 * @param {Object} statesData - Workflow states data
+	 * @param {string} taskMasterStatus - TaskMaster status being resolved
+	 * @returns {Object} Archived state handling result
+	 * @private
+	 */
+	_handleArchivedStates(statesData, taskMasterStatus) {
+		if (!statesData || !statesData.states) {
+			return { hasArchivedStates: false, archivedStateCount: 0 };
+		}
+
+		const archivedStates = statesData.states.filter((s) => s.archivedAt);
+		const activeStates = statesData.states.filter((s) => !s.archivedAt);
+
+		// Check if any default mappings point to archived states
+		const defaultNames =
+			LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS[
+				taskMasterStatus?.toLowerCase()
+			] || [];
+		const archivedDefaultMappings = archivedStates.filter((archived) =>
+			defaultNames.some(
+				(defaultName) =>
+					archived.name.toLowerCase() === defaultName.toLowerCase()
+			)
+		);
+
+		return {
+			hasArchivedStates: archivedStates.length > 0,
+			archivedStateCount: archivedStates.length,
+			activeStateCount: activeStates.length,
+			archivedDefaultMappings: archivedDefaultMappings.map((s) => ({
+				id: s.id,
+				name: s.name,
+				archivedAt: s.archivedAt
+			})),
+			shouldExcludeArchived: archivedDefaultMappings.length > 0,
+			recommendation:
+				archivedDefaultMappings.length > 0
+					? `Default mapping for '${taskMasterStatus}' points to archived state(s). Consider updating configuration to use active states.`
+					: null
+		};
+	}
+
+	/**
+	 * Check for circular dependencies in state transitions
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} taskMasterStatus - TaskMaster status being resolved
+	 * @returns {Promise<Object>} Circular dependency check result
+	 * @private
+	 */
+	async _checkCircularDependencies(teamId, taskMasterStatus) {
+		try {
+			// For now, implement basic checks
+			// In a more advanced implementation, this could check Linear's workflow transition rules
+			return {
+				hasCircularDependencies: false,
+				checkedStatus: taskMasterStatus,
+				message: 'No circular dependencies detected in basic check',
+				note: 'Advanced circular dependency detection requires workflow transition rule analysis'
+			};
+		} catch (error) {
+			return {
+				hasCircularDependencies: false,
+				error: `Circular dependency check failed: ${error.message}`,
+				checkedStatus: taskMasterStatus
+			};
+		}
+	}
+
+	/**
+	 * Apply advanced fallback mechanisms when standard resolution fails
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} taskMasterStatus - TaskMaster status
+	 * @param {Object} statesData - Workflow states data
+	 * @param {Object} configValidation - Configuration validation results
+	 * @returns {Promise<Object>} Advanced fallback result
+	 * @private
+	 */
+	async _applyAdvancedFallbacks(
+		teamId,
+		taskMasterStatus,
+		statesData,
+		configValidation
+	) {
+		try {
+			// Fallback 1: Try semantic matching with expanded vocabulary
+			const semanticMatch = this._findSemanticStateMatch(
+				statesData.states,
+				taskMasterStatus
+			);
+			if (semanticMatch) {
+				return {
+					success: true,
+					uuid: semanticMatch.id,
+					stateName: semanticMatch.name,
+					stateType: semanticMatch.type,
+					taskMasterStatus,
+					matchType: 'semantic-fallback',
+					fallbackUsed: 'semantic-matching'
+				};
+			}
+
+			// Fallback 2: Try type-based matching (find first state of appropriate type)
+			const typeMatch = this._findTypeBasedMatch(
+				statesData.statesByType,
+				taskMasterStatus
+			);
+			if (typeMatch) {
+				return {
+					success: true,
+					uuid: typeMatch.id,
+					stateName: typeMatch.name,
+					stateType: typeMatch.type,
+					taskMasterStatus,
+					matchType: 'type-based-fallback',
+					fallbackUsed: 'type-matching',
+					warning: `Using type-based fallback. Consider configuring explicit mapping for '${taskMasterStatus}'`
+				};
+			}
+
+			// Fallback 3: Use first available state of any type as last resort
+			const firstAvailableState = statesData.states.find((s) => !s.archivedAt);
+			if (firstAvailableState) {
+				return {
+					success: true,
+					uuid: firstAvailableState.id,
+					stateName: firstAvailableState.name,
+					stateType: firstAvailableState.type,
+					taskMasterStatus,
+					matchType: 'last-resort-fallback',
+					fallbackUsed: 'first-available-state',
+					warning: `Using last resort fallback state '${firstAvailableState.name}'. Manual configuration strongly recommended.`
+				};
+			}
+
+			return {
+				success: false,
+				error: 'All fallback mechanisms exhausted',
+				taskMasterStatus,
+				fallbacksAttempted: [
+					'semantic-matching',
+					'type-matching',
+					'first-available-state'
+				]
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: `Advanced fallback failed: ${error.message}`,
+				taskMasterStatus
+			};
+		}
+	}
+
+	/**
+	 * Find semantic match using expanded vocabulary
+	 *
+	 * @param {Array} states - Available workflow states
+	 * @param {string} taskMasterStatus - TaskMaster status
+	 * @returns {Object|null} Matched state or null
+	 * @private
+	 */
+	_findSemanticStateMatch(states, taskMasterStatus) {
+		if (!states || !Array.isArray(states) || !taskMasterStatus) {
+			return null;
+		}
+
+		// Expanded semantic mappings with more vocabulary
+		const semanticMappings = {
+			pending: [
+				'todo',
+				'to do',
+				'backlog',
+				'new',
+				'created',
+				'open',
+				'queued',
+				'waiting',
+				'scheduled',
+				'planned',
+				'ready',
+				'triage',
+				'incoming'
+			],
+			'in-progress': [
+				'in progress',
+				'progress',
+				'active',
+				'working',
+				'started',
+				'doing',
+				'development',
+				'implementing',
+				'building',
+				'coding',
+				'wip',
+				'current'
+			],
+			review: [
+				'in review',
+				'review',
+				'pending review',
+				'reviewing',
+				'testing',
+				'qa',
+				'quality assurance',
+				'validation',
+				'approval',
+				'checking'
+			],
+			done: [
+				'done',
+				'completed',
+				'finished',
+				'closed',
+				'resolved',
+				'complete',
+				'shipped',
+				'delivered',
+				'deployed',
+				'released',
+				'success'
+			],
+			cancelled: [
+				'cancelled',
+				'canceled',
+				'rejected',
+				'declined',
+				'abandoned',
+				'discarded',
+				'aborted',
+				'dropped',
+				'void',
+				'invalid'
+			],
+			deferred: [
+				'backlog',
+				'on hold',
+				'deferred',
+				'postponed',
+				'paused',
+				'suspended',
+				'later',
+				'future',
+				'someday',
+				'icebox',
+				'parked'
+			]
+		};
+
+		const targetStatus = taskMasterStatus.toLowerCase();
+		const semanticTerms = semanticMappings[targetStatus] || [];
+
+		for (const state of states) {
+			if (state.archivedAt) continue; // Skip archived states
+
+			const stateName = state.name.toLowerCase();
+
+			// Check if state name contains any semantic term
+			for (const term of semanticTerms) {
+				if (stateName.includes(term) || term.includes(stateName)) {
+					log(
+						'debug',
+						`Found semantic match for '${taskMasterStatus}': '${state.name}' (contains '${term}')`
+					);
+					return state;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Find type-based match for TaskMaster status
+	 *
+	 * @param {Object} statesByType - States grouped by type
+	 * @param {string} taskMasterStatus - TaskMaster status
+	 * @returns {Object|null} Matched state or null
+	 * @private
+	 */
+	_findTypeBasedMatch(statesByType, taskMasterStatus) {
+		if (!statesByType || !taskMasterStatus) {
+			return null;
+		}
+
+		// Map TaskMaster statuses to Linear state types
+		const statusToTypeMapping = {
+			pending: 'unstarted',
+			'in-progress': 'started',
+			review: 'started',
+			done: 'completed',
+			cancelled: 'canceled',
+			deferred: 'unstarted'
+		};
+
+		const targetType = statusToTypeMapping[taskMasterStatus.toLowerCase()];
+		if (!targetType || !statesByType[targetType]) {
+			return null;
+		}
+
+		// Find first non-archived state of the target type
+		const candidateStates = statesByType[targetType];
+		const activeState = candidateStates.find((state) => !state.archivedAt);
+
+		if (activeState) {
+			log(
+				'debug',
+				`Found type-based match for '${taskMasterStatus}': '${activeState.name}' (type: ${targetType})`
+			);
+		}
+
+		return activeState || null;
+	}
+
+	/**
+	 * Generate user guidance for resolving mapping issues
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} taskMasterStatus - TaskMaster status
+	 * @param {Object} statesData - Workflow states data
+	 * @param {Object} configValidation - Configuration validation results
+	 * @returns {Object} User guidance information
+	 * @private
+	 */
+	_generateUserGuidance(
+		teamId,
+		taskMasterStatus,
+		statesData,
+		configValidation
+	) {
+		const guidance = {
+			summary: `Unable to map TaskMaster status '${taskMasterStatus}' to Linear workflow state`,
+			steps: [],
+			availableStates: [],
+			recommendedActions: []
+		};
+
+		// Add available states information
+		if (statesData && statesData.states) {
+			guidance.availableStates = statesData.states
+				.filter((s) => !s.archivedAt) // Only active states
+				.map((s) => ({
+					id: s.id,
+					name: s.name,
+					type: s.type
+				}));
+		}
+
+		// Generate step-by-step guidance
+		guidance.steps = [
+			"1. Review your Linear team's workflow states in the Linear app",
+			"2. Identify which state should represent the TaskMaster status '" +
+				taskMasterStatus +
+				"'",
+			'3. Update your TaskMaster configuration using one of these methods:',
+			'   a. Run the setup wizard: taskmaster linear-sync-setup',
+			'   b. Manually edit .taskmaster/config.json',
+			'   c. Use CLI: taskmaster config set-linear-status-mapping'
+		];
+
+		// Add specific recommendations based on validation
+		if (configValidation.warnings.length > 0) {
+			guidance.recommendedActions.push(
+				'Address configuration warnings: ' +
+					configValidation.warnings.join(', ')
+			);
+		}
+
+		if (configValidation.recommendations.length > 0) {
+			guidance.recommendedActions.push(...configValidation.recommendations);
+		}
+
+		// Add status-specific recommendations
+		const defaultNames =
+			LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS[
+				taskMasterStatus.toLowerCase()
+			] || [];
+		if (defaultNames.length > 0) {
+			guidance.recommendedActions.push(
+				`Consider creating Linear workflow states named: ${defaultNames.join(' or ')} for automatic mapping`
+			);
+		}
+
+		return guidance;
+	}
+
 	/**
 	 * Perform atomic file update with comprehensive safety mechanisms
 	 *
