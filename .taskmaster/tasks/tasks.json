@@ -425,7 +425,7 @@
               5
             ],
             "details": "Expand test coverage to focus on the direct mapping approach:\n\n1. Test direct mapping of 6 TaskMaster statuses to Linear state UUIDs:\n   - Verify correct mapping of each status to its corresponding UUID\n   - Test state resolution with exact name matching only\n   - Ensure consistent mapping across multiple resolution attempts\n\n2. Test configuration storage and retrieval:\n   - Verify UUID mappings are properly stored in configuration\n   - Test loading mappings from configuration during initialization\n   - Ensure configuration persistence across application restarts\n\n3. Test validation of state names:\n   - Verify state names exist in Linear workspace before mapping\n   - Test handling of renamed states in Linear\n   - Validate state name case sensitivity handling\n\n4. Test error handling:\n   - Test behavior when state mappings are missing\n   - Verify appropriate error messages for unmapped states\n   - Test recovery mechanisms when mappings become invalid\n\n5. Test setup wizard integration:\n   - Verify wizard correctly generates initial mappings\n   - Test user interface for manual mapping adjustments\n   - Ensure mappings are properly saved after wizard completion\n\nPerformance tests should focus on direct lookups and configuration access speed. Mock Linear workflows should use simple, representative state configurations with standard UUID formats.\n<info added on 2025-06-26T22:48:03.586Z>\nExpand test coverage to focus on the direct mapping approach:\n\n1. Test direct mapping of 6 TaskMaster statuses to Linear state UUIDs:\n   - Verify correct mapping of each status to its corresponding UUID\n   - Test state resolution with exact name matching only\n   - Ensure consistent mapping across multiple resolution attempts\n\n2. Test configuration storage and retrieval:\n   - Verify UUID mappings are properly stored in configuration\n   - Test loading mappings from configuration during initialization\n   - Ensure configuration persistence across application restarts\n\n3. Test validation of state names:\n   - Verify state names exist in Linear workspace before mapping\n   - Test handling of renamed states in Linear\n   - Validate state name case sensitivity handling\n\n4. Test error handling:\n   - Test behavior when state mappings are missing\n   - Verify appropriate error messages for unmapped states\n   - Test recovery mechanisms when mappings become invalid\n\n5. Test setup wizard integration:\n   - Verify wizard correctly generates initial mappings\n   - Test user interface for manual mapping adjustments\n   - Ensure mappings are properly saved after wizard completion\n\nPerformance tests should focus on direct lookups and configuration access speed. Mock Linear workflows should use simple, representative state configurations with standard UUID formats.\n</info added on 2025-06-26T22:48:03.586Z>",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 7,
@@ -436,7 +436,7 @@
               2
             ],
             "details": "Update the configuration system to store Linear state UUIDs directly instead of state names for the 6 TaskMaster statuses (Todo, In Progress, Blocked, In Review, Done, Canceled). Implement straightforward migration logic to convert existing name-based configurations to UUID-based configurations. Ensure all Linear API calls reference these UUIDs directly from the configuration when creating or updating issues. Focus on a simple, direct UUID lookup approach that minimizes complexity while maintaining backward compatibility during the transition period.",
-            "status": "pending"
+            "status": "done"
           },
           {
             "id": 8,
@@ -446,7 +446,7 @@
               7
             ],
             "details": "Develop logic to periodically check for changes in Linear workflow states. Update cached mappings when changes are detected. Implement notification system for breaking changes that require user intervention.\n<info added on 2025-06-26T22:47:52.400Z>\nDevelop logic to periodically check for changes in Linear workflow states. Update state mappings in configuration files when changes are detected. This mechanism should only run after the state names to UUID conversion (task 6.7) is complete, as it relies on the UUID configuration structure. Implement notification system for breaking changes that require user intervention.\n</info added on 2025-06-26T22:47:52.400Z>",
-            "status": "pending"
+            "status": "in-progress"
           },
           {
             "id": 9,
@@ -2328,7 +2328,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-28T13:10:52.511Z",
+      "updated": "2025-06-28T13:55:34.512Z",
       "description": "Tasks for master context"
     }
   }

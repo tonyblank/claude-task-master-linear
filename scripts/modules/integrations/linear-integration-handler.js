@@ -18,7 +18,8 @@ import {
 import {
 	getLinearConfig,
 	getLinearPriorityMapping,
-	getLinearStatusMapping
+	getLinearStatusMapping,
+	getEffectiveLinearStatusMapping
 } from '../config-manager.js';
 import path from 'path';
 import fs from 'fs';
@@ -498,7 +499,11 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			const linearConfig = getLinearConfig(projectRoot);
 
 			// Build the issue data with comprehensive field mapping
-			const issueData = this._buildIssueData(task, linearConfig, projectRoot);
+			const issueData = await this._buildIssueData(
+				task,
+				linearConfig,
+				projectRoot
+			);
 
 			// Validate issue data before sending
 			this._validateIssueData(issueData);
@@ -1043,7 +1048,7 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	 * @returns {Object} Issue data for Linear API
 	 * @private
 	 */
-	_buildIssueData(task, linearConfig, projectRoot) {
+	async _buildIssueData(task, linearConfig, projectRoot) {
 		const issueData = {
 			title: this._mapTaskTitle(task),
 			description: this._formatTaskDescription(task),
@@ -1062,9 +1067,15 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 		}
 
 		// Add state if task status maps to a Linear state
-		const statusMapping = getLinearStatusMapping(projectRoot);
-		if (statusMapping && task.status && statusMapping[task.status]) {
-			issueData.stateId = statusMapping[task.status];
+		if (task.status) {
+			const stateUuid = await this.getEffectiveStateUuid(
+				task.status,
+				this.config.teamId,
+				projectRoot
+			);
+			if (stateUuid) {
+				issueData.stateId = stateUuid;
+			}
 		}
 
 		return issueData;
@@ -1107,6 +1118,7 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			}
 
 			// Add status label if mapping is configured
+			// For labels, we use the name mapping since labels are identified by name
 			const statusMapping = getLinearStatusMapping(projectRoot);
 			if (statusMapping && task.status && statusMapping[task.status]) {
 				const statusLabel = await this._findOrCreateLabel(
@@ -3246,6 +3258,68 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				error.message
 			);
 			return LinearIntegrationHandler.TASKMASTER_STATUSES;
+		}
+	}
+
+	/**
+	 * Get the effective state UUID for a TaskMaster status
+	 * Uses configuration-based UUID mapping if available, otherwise resolves via API
+	 *
+	 * @param {string} taskMasterStatus - TaskMaster status
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} projectRoot - Project root directory
+	 * @returns {Promise<string|null>} Linear state UUID or null if not found
+	 */
+	async getEffectiveStateUuid(taskMasterStatus, teamId, projectRoot) {
+		try {
+			const effectiveMapping = getEffectiveLinearStatusMapping(projectRoot);
+
+			if (effectiveMapping && effectiveMapping.mapping[taskMasterStatus]) {
+				if (effectiveMapping.type === 'uuid') {
+					// Direct UUID mapping available
+					return effectiveMapping.mapping[taskMasterStatus];
+				} else {
+					// Name-based mapping - need to resolve to UUID
+					log(
+						'debug',
+						`Resolving name-based mapping "${effectiveMapping.mapping[taskMasterStatus]}" to UUID for status "${taskMasterStatus}"`
+					);
+					const resolution = await this.resolveTaskMasterStatusToLinearUUID(
+						teamId,
+						taskMasterStatus
+					);
+					if (resolution.success) {
+						return resolution.uuid;
+					} else {
+						log(
+							'warn',
+							`Failed to resolve "${taskMasterStatus}" to UUID: ${resolution.error}`
+						);
+						return null;
+					}
+				}
+			}
+
+			// No mapping configured - try default resolution
+			log(
+				'debug',
+				`No mapping configured for "${taskMasterStatus}", attempting default resolution`
+			);
+			const resolution = await this.resolveTaskMasterStatusToLinearUUID(
+				teamId,
+				taskMasterStatus
+			);
+			if (resolution.success) {
+				return resolution.uuid;
+			}
+
+			return null;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to get effective state UUID for "${taskMasterStatus}": ${error.message}`
+			);
+			return null;
 		}
 	}
 
