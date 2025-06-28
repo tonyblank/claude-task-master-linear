@@ -167,7 +167,8 @@ const DEFAULT_CONFIG = {
 					done: 'Done',
 					cancelled: 'Cancelled',
 					deferred: 'Backlog'
-				}
+				},
+				statusUuidMapping: {}
 			},
 			sync: {
 				autoSync: true,

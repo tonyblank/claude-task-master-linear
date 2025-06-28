@@ -91,6 +91,11 @@ const DEFAULTS = {
 					done: 'Done',
 					cancelled: 'Cancelled',
 					deferred: 'Backlog'
+				},
+				statusUuidMapping: {
+					// UUID-based mappings for direct Linear API calls
+					// These take precedence over statusMapping when available
+					// Format: { 'pending': 'uuid-string', ... }
 				}
 			},
 			sync: {
@@ -977,6 +982,184 @@ function getLinearSyncSettings(explicitRoot = null) {
 	return linearConfig.sync || DEFAULTS.integrations.linear.sync;
 }
 
+/**
+ * Gets the Linear status UUID mapping configuration
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {object} The status UUID mapping object
+ */
+function getLinearStatusUuidMapping(explicitRoot = null) {
+	const linearConfig = getLinearConfig(explicitRoot);
+	return (
+		linearConfig.labels?.statusUuidMapping ||
+		DEFAULTS.integrations.linear.labels.statusUuidMapping
+	);
+}
+
+/**
+ * Sets the Linear status UUID mapping configuration
+ * @param {object} uuidMapping - The UUID mapping object to set
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {boolean} True if successful
+ */
+function setLinearStatusUuidMapping(uuidMapping, explicitRoot = null) {
+	try {
+		const projectRoot = explicitRoot || findProjectRoot();
+		const configPath = path.join(projectRoot, CONFIG_PATHS.main);
+
+		const config = loadConfig(projectRoot);
+
+		// Ensure the structure exists
+		if (!config.integrations) config.integrations = {};
+		if (!config.integrations.linear) config.integrations.linear = {};
+		if (!config.integrations.linear.labels)
+			config.integrations.linear.labels = {};
+
+		// Set the UUID mapping
+		config.integrations.linear.labels.statusUuidMapping = uuidMapping;
+
+		// Write the updated config
+		writeJSON(configPath, config, 2);
+
+		// Clear cached config to force reload
+		loadedConfig = null;
+		loadedConfigRoot = null;
+
+		return true;
+	} catch (error) {
+		log('error', `Failed to set Linear status UUID mapping: ${error.message}`);
+		return false;
+	}
+}
+
+/**
+ * Gets the effective Linear status mapping (UUID preferred, falls back to name-based)
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {object} Object with {type: 'uuid'|'name', mapping: object}
+ */
+function getEffectiveLinearStatusMapping(explicitRoot = null) {
+	const uuidMapping = getLinearStatusUuidMapping(explicitRoot);
+	const nameMapping = getLinearStatusMapping(explicitRoot);
+
+	// Check if UUID mapping has any actual UUIDs (not empty object)
+	const hasUuidMappings = uuidMapping && Object.keys(uuidMapping).length > 0;
+
+	if (hasUuidMappings) {
+		return {
+			type: 'uuid',
+			mapping: uuidMapping
+		};
+	}
+
+	return {
+		type: 'name',
+		mapping: nameMapping
+	};
+}
+
+/**
+ * Validates Linear status UUID mapping format
+ * @param {object} uuidMapping - The UUID mapping object to validate
+ * @returns {object} Validation result with {valid: boolean, errors: string[]}
+ */
+function validateLinearStatusUuidMapping(uuidMapping) {
+	const errors = [];
+
+	if (!uuidMapping || typeof uuidMapping !== 'object') {
+		return { valid: false, errors: ['UUID mapping must be an object'] };
+	}
+
+	const validStatuses = [
+		'pending',
+		'in-progress',
+		'review',
+		'done',
+		'cancelled',
+		'deferred'
+	];
+
+	// Validate each status mapping
+	for (const [status, uuid] of Object.entries(uuidMapping)) {
+		// Check if status is valid
+		if (!validStatuses.includes(status)) {
+			errors.push(
+				`Invalid TaskMaster status: "${status}". Valid statuses: ${validStatuses.join(', ')}`
+			);
+		}
+
+		// Check if UUID is valid format
+		if (!validateUuid(uuid)) {
+			errors.push(`Invalid UUID format for status "${status}": "${uuid}"`);
+		}
+	}
+
+	return {
+		valid: errors.length === 0,
+		errors
+	};
+}
+
+/**
+ * Generates UUID mapping from name mapping using Linear API resolution
+ * @param {object} nameMapping - The name-based mapping to convert
+ * @param {string} teamId - Linear team ID for API calls
+ * @param {string|null} explicitRoot - Optional explicit path to the project root
+ * @returns {Promise<object>} Result with {success: boolean, mapping?: object, errors?: string[]}
+ */
+async function generateLinearStatusUuidMapping(
+	nameMapping,
+	teamId,
+	explicitRoot = null
+) {
+	try {
+		// Import the Linear integration handler for UUID resolution
+		const { LinearIntegrationHandler } = await import(
+			'./integrations/linear-integration-handler.js'
+		);
+
+		const config = {
+			apiKey: getLinearApiKey(explicitRoot),
+			teamId: teamId
+		};
+
+		const handler = new LinearIntegrationHandler(config);
+		await handler._performInitialization();
+
+		const uuidMapping = {};
+		const errors = [];
+
+		// Generate UUID mappings for each status
+		for (const [status, stateName] of Object.entries(nameMapping)) {
+			try {
+				const result = await handler.resolveTaskMasterStatusToLinearUUID(
+					teamId,
+					status
+				);
+
+				if (result.success) {
+					uuidMapping[status] = result.uuid;
+				} else {
+					errors.push(
+						`Failed to resolve "${status}" (${stateName}): ${result.error}`
+					);
+				}
+			} catch (error) {
+				errors.push(`Error resolving "${status}": ${error.message}`);
+			}
+		}
+
+		return {
+			success: errors.length === 0,
+			mapping: uuidMapping,
+			errors: errors.length > 0 ? errors : undefined
+		};
+	} catch (error) {
+		return {
+			success: false,
+			errors: [`Failed to generate UUID mapping: ${error.message}`]
+		};
+	}
+}
+
 // --- Linear Configuration Validation ---
 
 /**
@@ -1383,7 +1566,12 @@ export {
 	getLinearStatusMapping,
 	getLinearPriorityMapping,
 	getLinearSyncSettings,
+	getLinearStatusUuidMapping,
+	setLinearStatusUuidMapping,
+	getEffectiveLinearStatusMapping,
 	// Linear Configuration Validation
+	validateLinearStatusUuidMapping,
+	generateLinearStatusUuidMapping,
 	validateLinearApiKey,
 	validateLinearTeamId,
 	validateLinearProjectId,
