@@ -10,6 +10,7 @@ import boxen from 'boxen';
 import inquirer from 'inquirer';
 import { LinearClient } from '@linear/sdk';
 import { log } from './utils.js';
+import { validateExistingStateMappings } from './linear-state-mapping-selection.js';
 import { getLinearConfigPath } from './linear-config-manager.js';
 import fs from 'fs';
 
@@ -388,6 +389,63 @@ export async function testConfiguration(wizardData, options = {}) {
 				name: 'Configuration File',
 				status: 'warning',
 				message: error.message
+			});
+		}
+
+		// Test 5: State mapping validation
+		if (wizardData.stateMappings && wizardData.team) {
+			try {
+				const validationResult = await validateExistingStateMappings(
+					wizardData.apiKey,
+					wizardData.team.id,
+					wizardData.stateMappings
+				);
+
+				if (validationResult.success && validationResult.validation.isValid) {
+					testResult.tests.push({
+						name: 'State Mappings',
+						status: 'passed',
+						message: `All mappings valid (${validationResult.validation.coverage.toFixed(1)}% coverage)`
+					});
+				} else if (validationResult.success) {
+					const validation = validationResult.validation;
+					if (validation.errors.length > 0) {
+						testResult.warnings.push('State mapping validation errors found');
+						testResult.tests.push({
+							name: 'State Mappings',
+							status: 'warning',
+							message: `${validation.errors.length} errors, ${validation.warnings.length} warnings`
+						});
+					} else {
+						testResult.tests.push({
+							name: 'State Mappings',
+							status: 'passed',
+							message: `Valid with ${validation.warnings.length} warnings (${validation.coverage.toFixed(1)}% coverage)`
+						});
+					}
+				} else {
+					testResult.warnings.push('Could not validate state mappings');
+					testResult.tests.push({
+						name: 'State Mappings',
+						status: 'warning',
+						message: validationResult.error || 'Validation failed'
+					});
+				}
+			} catch (error) {
+				testResult.warnings.push(
+					`State mapping validation failed: ${error.message}`
+				);
+				testResult.tests.push({
+					name: 'State Mappings',
+					status: 'warning',
+					message: 'Could not validate mappings'
+				});
+			}
+		} else if (wizardData.team) {
+			testResult.tests.push({
+				name: 'State Mappings',
+				status: 'warning',
+				message: 'No state mappings configured'
 			});
 		}
 

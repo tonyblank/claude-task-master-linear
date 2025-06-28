@@ -26,9 +26,12 @@
 
 import chalk from 'chalk';
 import ora from 'ora';
+import fs from 'fs';
+import path from 'path';
 import { validateLinearApiKey } from '../modules/linear-api-validation.js';
 import { selectLinearTeam } from '../modules/linear-team-selection.js';
 import { selectLinearProject } from '../modules/linear-project-selection.js';
+import { selectLinearStateMappings } from '../modules/linear-state-mapping-selection.js';
 import {
 	createLinearConfiguration,
 	getConfiguredLabels
@@ -47,12 +50,14 @@ import { log, findProjectRoot } from '../modules/utils.js';
  * @param {Object} options - Command line options
  * @param {boolean} options.skipTest - Skip configuration testing
  * @param {boolean} options.dryRun - Show what would be done without making changes
+ * @param {boolean} options.reconfigureStates - Only reconfigure state mappings
  * @param {string} options.projectRoot - Project root directory
  */
 export async function runSetupWizard(options = {}) {
 	const {
 		skipTest = false,
 		dryRun = false,
+		reconfigureStates = false,
 		projectRoot = findProjectRoot()
 	} = options;
 
@@ -61,6 +66,7 @@ export async function runSetupWizard(options = {}) {
 		apiKey: null,
 		team: null,
 		project: null,
+		stateMappings: null,
 		labelConfiguration: {},
 		userInfo: null
 	};
@@ -68,6 +74,11 @@ export async function runSetupWizard(options = {}) {
 	try {
 		// Set environment variable to suppress config warnings during interactive setup
 		process.env.TASKMASTER_INTERACTIVE_SETUP = 'true';
+
+		// Handle reconfiguration mode
+		if (reconfigureStates) {
+			return await runStateMappingReconfiguration({ projectRoot, dryRun });
+		}
 
 		// Welcome message
 		console.log(chalk.cyan.bold('\n🚀 Linear Integration Setup Wizard\n'));
@@ -144,8 +155,36 @@ export async function runSetupWizard(options = {}) {
 
 		log('success', `✅ Selected project: ${projectResult.displayName}`);
 
-		// Step 4: Create Linear Configuration
-		log('info', '\nStep 4: Creating Linear Configuration');
+		// Step 4: State Mapping Configuration
+		log('info', '\nStep 4: Workflow State Mapping Configuration');
+		spinner = ora('Fetching Linear workflow states...').start();
+
+		const stateMappingResult = await selectLinearStateMappings(
+			wizardData.apiKey,
+			teamResult.id,
+			{ spinner }
+		);
+		// Spinner is stopped inside selectLinearStateMappings
+
+		if (!stateMappingResult.success) {
+			log('error', 'Setup cancelled: State mapping configuration failed');
+			console.log(chalk.red(`Error: ${stateMappingResult.error}`));
+			if (stateMappingResult.userMessage) {
+				console.log(chalk.gray(`💡 ${stateMappingResult.userMessage}`));
+			}
+			process.exit(1);
+		}
+
+		wizardData.stateMappings = stateMappingResult.mappings;
+		wizardData.workflowStates = stateMappingResult.workflowStates;
+
+		log(
+			'success',
+			`✅ State mappings configured (${stateMappingResult.coverage.toFixed(1)}% coverage)`
+		);
+
+		// Step 5: Create Linear Configuration
+		log('info', '\nStep 5: Creating Linear Configuration');
 
 		const configResult = await createLinearConfiguration(wizardData, {
 			projectRoot
@@ -155,8 +194,8 @@ export async function runSetupWizard(options = {}) {
 			process.exit(1);
 		}
 
-		// Step 5: Label Sync
-		log('info', '\nStep 5: Syncing Labels with Linear');
+		// Step 6: Label Sync
+		log('info', '\nStep 6: Syncing Labels with Linear');
 		spinner = ora('Fetching existing labels from Linear...').start();
 
 		try {
@@ -204,8 +243,8 @@ export async function runSetupWizard(options = {}) {
 			);
 		}
 
-		// Step 6: Write Environment Configuration
-		log('info', '\nStep 6: Saving Environment Configuration');
+		// Step 7: Write Environment Configuration
+		log('info', '\nStep 7: Saving Environment Configuration');
 
 		// Validate critical data before env write
 		if (!wizardData.apiKey || !wizardData.team?.id || !wizardData.project?.id) {
@@ -256,7 +295,7 @@ export async function runSetupWizard(options = {}) {
 			}
 		}
 
-		// Step 6: Success Confirmation and Next Steps
+		// Step 8: Success Confirmation and Next Steps
 		log('info', '\nSetup Complete!');
 
 		const successResult = await displaySetupSuccess(wizardData, {
@@ -327,6 +366,158 @@ export async function runSetupWizard(options = {}) {
 }
 
 /**
+ * Reconfigure only state mappings for existing setup
+ *
+ * @param {Object} options - Reconfiguration options
+ * @param {string} options.projectRoot - Project root directory
+ * @param {boolean} options.dryRun - Show what would be done without making changes
+ */
+async function runStateMappingReconfiguration({ projectRoot, dryRun }) {
+	let spinner;
+
+	try {
+		console.log(chalk.cyan.bold('\n🔄 State Mapping Reconfiguration\n'));
+		console.log(
+			chalk.gray(
+				'This will update your Linear workflow state mappings without changing other settings.\n'
+			)
+		);
+
+		// Load existing configuration
+		const configPath = path.join(projectRoot, '.taskmaster/linear-config.json');
+		const envPath = path.join(projectRoot, '.env');
+
+		if (!fs.existsSync(configPath)) {
+			throw new Error(
+				'Linear configuration not found. Please run full setup first.'
+			);
+		}
+
+		if (!fs.existsSync(envPath)) {
+			throw new Error(
+				'Environment configuration not found. Please run full setup first.'
+			);
+		}
+
+		// Read existing config
+		const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+
+		if (!config.team?.id) {
+			throw new Error(
+				'Team configuration not found. Please run full setup first.'
+			);
+		}
+
+		// Read API key from environment
+		const envContent = fs.readFileSync(envPath, 'utf8');
+		const apiKeyMatch = envContent.match(/LINEAR_API_KEY=(.+)/);
+
+		if (!apiKeyMatch) {
+			throw new Error(
+				'Linear API key not found in .env file. Please run full setup first.'
+			);
+		}
+
+		const apiKey = apiKeyMatch[1];
+		const teamId = config.team.id;
+
+		console.log(
+			chalk.green(
+				`📋 Found existing configuration for team: ${config.team.name}`
+			)
+		);
+
+		// Step 1: State Mapping Configuration
+		log('info', '\nStep 1: Workflow State Mapping Configuration');
+		spinner = ora('Fetching Linear workflow states...').start();
+
+		const stateMappingResult = await selectLinearStateMappings(apiKey, teamId, {
+			spinner
+		});
+
+		if (!stateMappingResult.success) {
+			log(
+				'error',
+				'Reconfiguration failed: State mapping configuration failed'
+			);
+			console.log(chalk.red(`Error: ${stateMappingResult.error}`));
+			if (stateMappingResult.userMessage) {
+				console.log(chalk.gray(`💡 ${stateMappingResult.userMessage}`));
+			}
+			return { success: false, error: stateMappingResult.error };
+		}
+
+		// Step 2: Update Configuration
+		log('info', '\nStep 2: Updating Configuration');
+
+		if (dryRun) {
+			console.log(
+				chalk.yellow('DRY RUN: Would update the following mappings:')
+			);
+			console.log(
+				chalk.gray('Name mappings:'),
+				JSON.stringify(stateMappingResult.mappings.name, null, 2)
+			);
+			console.log(
+				chalk.gray('UUID mappings:'),
+				JSON.stringify(stateMappingResult.mappings.uuid, null, 2)
+			);
+		} else {
+			// Update config with new mappings
+			config.mappings.status = {
+				...config.mappings.status,
+				...stateMappingResult.mappings.name
+			};
+			config.mappings.statusUuid = stateMappingResult.mappings.uuid;
+
+			// Update workflow states metadata
+			config.metadata.workflowStates = {
+				lastFetched: new Date().toISOString(),
+				count: stateMappingResult.workflowStates.length,
+				states: stateMappingResult.workflowStates.map((state) => ({
+					id: state.id,
+					name: state.name,
+					type: state.type,
+					color: state.color
+				}))
+			};
+
+			config.metadata.lastUpdated = new Date().toISOString();
+
+			// Write updated config
+			fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+			log('success', '✅ Configuration updated successfully');
+		}
+
+		console.log(
+			chalk.green.bold('\n🎉 State mapping reconfiguration complete!\n')
+		);
+
+		return {
+			success: true,
+			mappings: stateMappingResult.mappings,
+			coverage: stateMappingResult.coverage,
+			dryRun
+		};
+	} catch (error) {
+		if (spinner) spinner.stop();
+
+		log('error', `Reconfiguration failed: ${error.message}`);
+		console.log(
+			chalk.cyan(
+				'\n💡 You can run full setup with: task-master linear-sync-setup\n'
+			)
+		);
+
+		return {
+			success: false,
+			error: error.message
+		};
+	}
+}
+
+/**
  * Command line interface for linear-sync-setup
  *
  * Following the integration command pattern: {integration}-{command-name}
@@ -359,6 +550,10 @@ export default {
 		{
 			flags: '--dry-run',
 			description: 'Show what would be done without making changes'
+		},
+		{
+			flags: '--reconfigure-states',
+			description: 'Only reconfigure state mappings (requires existing setup)'
 		},
 		{
 			flags: '--project-root <path>',

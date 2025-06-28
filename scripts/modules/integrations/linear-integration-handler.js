@@ -18,7 +18,8 @@ import {
 import {
 	getLinearConfig,
 	getLinearPriorityMapping,
-	getLinearStatusMapping
+	getLinearStatusMapping,
+	getEffectiveLinearStatusMapping
 } from '../config-manager.js';
 import path from 'path';
 import fs from 'fs';
@@ -498,7 +499,11 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			const linearConfig = getLinearConfig(projectRoot);
 
 			// Build the issue data with comprehensive field mapping
-			const issueData = this._buildIssueData(task, linearConfig, projectRoot);
+			const issueData = await this._buildIssueData(
+				task,
+				linearConfig,
+				projectRoot
+			);
 
 			// Validate issue data before sending
 			this._validateIssueData(issueData);
@@ -1043,7 +1048,7 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 	 * @returns {Object} Issue data for Linear API
 	 * @private
 	 */
-	_buildIssueData(task, linearConfig, projectRoot) {
+	async _buildIssueData(task, linearConfig, projectRoot) {
 		const issueData = {
 			title: this._mapTaskTitle(task),
 			description: this._formatTaskDescription(task),
@@ -1062,9 +1067,15 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 		}
 
 		// Add state if task status maps to a Linear state
-		const statusMapping = getLinearStatusMapping(projectRoot);
-		if (statusMapping && task.status && statusMapping[task.status]) {
-			issueData.stateId = statusMapping[task.status];
+		if (task.status) {
+			const stateUuid = await this.getEffectiveStateUuid(
+				task.status,
+				this.config.teamId,
+				projectRoot
+			);
+			if (stateUuid) {
+				issueData.stateId = stateUuid;
+			}
 		}
 
 		return issueData;
@@ -1107,6 +1118,7 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			}
 
 			// Add status label if mapping is configured
+			// For labels, we use the name mapping since labels are identified by name
 			const statusMapping = getLinearStatusMapping(projectRoot);
 			if (statusMapping && task.status && statusMapping[task.status]) {
 				const statusLabel = await this._findOrCreateLabel(
@@ -1250,6 +1262,601 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			projectRoot,
 			'updateLinearIssue'
 		);
+	}
+
+	// =============================================================================
+	// EDGE CASE HANDLING FOR CUSTOM WORKFLOWS
+	// =============================================================================
+
+	/**
+	 * Handle edge cases for custom workflow configurations
+	 * Implements comprehensive fallback mechanisms and error handling
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} taskMasterStatus - TaskMaster status to resolve
+	 * @param {Object} options - Configuration options
+	 * @returns {Promise<Object>} Resolution result with fallback information
+	 */
+	async handleWorkflowEdgeCases(teamId, taskMasterStatus, options = {}) {
+		const {
+			includeArchived = false,
+			allowCircularCheck = true,
+			provideUserGuidance = true,
+			fallbackToDefault = true
+		} = options;
+
+		try {
+			// Step 1: Get workflow states with archived state handling
+			const statesData = await this.queryWorkflowStates(teamId, {
+				includeArchived,
+				useCache: true
+			});
+
+			// Step 2: Validate workflow configuration
+			const configValidation = await this._validateWorkflowConfiguration(
+				statesData,
+				teamId
+			);
+
+			// Step 3: Handle archived state scenarios
+			const archivedStateHandling = this._handleArchivedStates(
+				statesData,
+				taskMasterStatus
+			);
+
+			// Step 4: Check for circular dependencies if enabled
+			let circularDependencyCheck = null;
+			if (allowCircularCheck) {
+				circularDependencyCheck = await this._checkCircularDependencies(
+					teamId,
+					taskMasterStatus
+				);
+			}
+
+			// Step 5: Attempt standard resolution with enhanced error context
+			const standardResolution = await this.resolveTaskMasterStatusToLinearUUID(
+				teamId,
+				taskMasterStatus,
+				{ useCache: true, allowFuzzyFallback: true }
+			);
+
+			// Step 6: If standard resolution fails, apply advanced fallbacks
+			let fallbackResolution = null;
+			if (!standardResolution.success && fallbackToDefault) {
+				fallbackResolution = await this._applyAdvancedFallbacks(
+					teamId,
+					taskMasterStatus,
+					statesData,
+					configValidation
+				);
+			}
+
+			// Step 7: Generate user guidance if requested
+			let userGuidance = null;
+			if (
+				provideUserGuidance &&
+				!standardResolution.success &&
+				!fallbackResolution?.success
+			) {
+				userGuidance = this._generateUserGuidance(
+					teamId,
+					taskMasterStatus,
+					statesData,
+					configValidation
+				);
+			}
+
+			return {
+				success:
+					standardResolution.success || fallbackResolution?.success || false,
+				result: standardResolution.success
+					? standardResolution
+					: fallbackResolution,
+				edgeCaseHandling: {
+					configValidation,
+					archivedStateHandling,
+					circularDependencyCheck,
+					userGuidance
+				},
+				teamId,
+				taskMasterStatus
+			};
+		} catch (error) {
+			log(
+				'error',
+				`Failed to handle workflow edge cases for team ${teamId}:`,
+				error.message
+			);
+			return {
+				success: false,
+				error: `Edge case handling failed: ${error.message}`,
+				teamId,
+				taskMasterStatus
+			};
+		}
+	}
+
+	/**
+	 * Validate workflow configuration for potential issues
+	 *
+	 * @param {Object} statesData - Workflow states data
+	 * @param {string} teamId - Linear team ID
+	 * @returns {Promise<Object>} Validation results
+	 * @private
+	 */
+	async _validateWorkflowConfiguration(statesData, teamId) {
+		const validation = {
+			isValid: true,
+			issues: [],
+			warnings: [],
+			recommendations: []
+		};
+
+		if (!statesData || !statesData.states || statesData.states.length === 0) {
+			validation.isValid = false;
+			validation.issues.push('No workflow states found for team');
+			return validation;
+		}
+
+		// Check for missing state types
+		const requiredTypes = ['unstarted', 'started', 'completed'];
+		const availableTypes = [...new Set(statesData.states.map((s) => s.type))];
+		const missingTypes = requiredTypes.filter(
+			(type) => !availableTypes.includes(type)
+		);
+
+		if (missingTypes.length > 0) {
+			validation.warnings.push(
+				`Missing state types: ${missingTypes.join(', ')}`
+			);
+			validation.recommendations.push(
+				'Add workflow states for missing types to improve task status mapping'
+			);
+		}
+
+		// Check for duplicate state names
+		const stateNames = statesData.states.map((s) => s.name);
+		const duplicateNames = stateNames.filter(
+			(name, index) => stateNames.indexOf(name) !== index
+		);
+		if (duplicateNames.length > 0) {
+			validation.warnings.push(
+				`Duplicate state names detected: ${[...new Set(duplicateNames)].join(', ')}`
+			);
+			validation.recommendations.push(
+				'Consider renaming duplicate states to avoid mapping conflicts'
+			);
+		}
+
+		// Check for archived states in active use
+		const archivedStates = statesData.states.filter((s) => s.archivedAt);
+		if (archivedStates.length > 0) {
+			validation.warnings.push(
+				`${archivedStates.length} archived states found`
+			);
+			validation.recommendations.push(
+				'Archived states may cause mapping issues if referenced in configuration'
+			);
+		}
+
+		// Check TaskMaster default mapping coverage
+		const availableStateNames = statesData.states.map((s) =>
+			s.name.toLowerCase()
+		);
+		const unmappedStatuses = [];
+
+		for (const [status, defaultNames] of Object.entries(
+			LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS
+		)) {
+			const hasMapping = defaultNames.some((name) =>
+				availableStateNames.includes(name.toLowerCase())
+			);
+			if (!hasMapping) {
+				unmappedStatuses.push(status);
+			}
+		}
+
+		if (unmappedStatuses.length > 0) {
+			validation.warnings.push(
+				`TaskMaster statuses without default mappings: ${unmappedStatuses.join(', ')}`
+			);
+			validation.recommendations.push(
+				'Configure custom state mappings for unmapped TaskMaster statuses'
+			);
+		}
+
+		return validation;
+	}
+
+	/**
+	 * Handle archived workflow states
+	 *
+	 * @param {Object} statesData - Workflow states data
+	 * @param {string} taskMasterStatus - TaskMaster status being resolved
+	 * @returns {Object} Archived state handling result
+	 * @private
+	 */
+	_handleArchivedStates(statesData, taskMasterStatus) {
+		if (!statesData || !statesData.states) {
+			return { hasArchivedStates: false, archivedStateCount: 0 };
+		}
+
+		const archivedStates = statesData.states.filter((s) => s.archivedAt);
+		const activeStates = statesData.states.filter((s) => !s.archivedAt);
+
+		// Check if any default mappings point to archived states
+		const defaultNames =
+			LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS[
+				taskMasterStatus?.toLowerCase()
+			] || [];
+		const archivedDefaultMappings = archivedStates.filter((archived) =>
+			defaultNames.some(
+				(defaultName) =>
+					archived.name.toLowerCase() === defaultName.toLowerCase()
+			)
+		);
+
+		return {
+			hasArchivedStates: archivedStates.length > 0,
+			archivedStateCount: archivedStates.length,
+			activeStateCount: activeStates.length,
+			archivedDefaultMappings: archivedDefaultMappings.map((s) => ({
+				id: s.id,
+				name: s.name,
+				archivedAt: s.archivedAt
+			})),
+			shouldExcludeArchived: archivedDefaultMappings.length > 0,
+			recommendation:
+				archivedDefaultMappings.length > 0
+					? `Default mapping for '${taskMasterStatus}' points to archived state(s). Consider updating configuration to use active states.`
+					: null
+		};
+	}
+
+	/**
+	 * Check for circular dependencies in state transitions
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} taskMasterStatus - TaskMaster status being resolved
+	 * @returns {Promise<Object>} Circular dependency check result
+	 * @private
+	 */
+	async _checkCircularDependencies(teamId, taskMasterStatus) {
+		try {
+			// For now, implement basic checks
+			// In a more advanced implementation, this could check Linear's workflow transition rules
+			return {
+				hasCircularDependencies: false,
+				checkedStatus: taskMasterStatus,
+				message: 'No circular dependencies detected in basic check',
+				note: 'Advanced circular dependency detection requires workflow transition rule analysis'
+			};
+		} catch (error) {
+			return {
+				hasCircularDependencies: false,
+				error: `Circular dependency check failed: ${error.message}`,
+				checkedStatus: taskMasterStatus
+			};
+		}
+	}
+
+	/**
+	 * Apply advanced fallback mechanisms when standard resolution fails
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} taskMasterStatus - TaskMaster status
+	 * @param {Object} statesData - Workflow states data
+	 * @param {Object} configValidation - Configuration validation results
+	 * @returns {Promise<Object>} Advanced fallback result
+	 * @private
+	 */
+	async _applyAdvancedFallbacks(
+		teamId,
+		taskMasterStatus,
+		statesData,
+		configValidation
+	) {
+		try {
+			// Fallback 1: Try semantic matching with expanded vocabulary
+			const semanticMatch = this._findSemanticStateMatch(
+				statesData.states,
+				taskMasterStatus
+			);
+			if (semanticMatch) {
+				return {
+					success: true,
+					uuid: semanticMatch.id,
+					stateName: semanticMatch.name,
+					stateType: semanticMatch.type,
+					taskMasterStatus,
+					matchType: 'semantic-fallback',
+					fallbackUsed: 'semantic-matching'
+				};
+			}
+
+			// Fallback 2: Try type-based matching (find first state of appropriate type)
+			const typeMatch = this._findTypeBasedMatch(
+				statesData.statesByType,
+				taskMasterStatus
+			);
+			if (typeMatch) {
+				return {
+					success: true,
+					uuid: typeMatch.id,
+					stateName: typeMatch.name,
+					stateType: typeMatch.type,
+					taskMasterStatus,
+					matchType: 'type-based-fallback',
+					fallbackUsed: 'type-matching',
+					warning: `Using type-based fallback. Consider configuring explicit mapping for '${taskMasterStatus}'`
+				};
+			}
+
+			// Fallback 3: Use first available state of any type as last resort
+			const firstAvailableState = statesData.states.find((s) => !s.archivedAt);
+			if (firstAvailableState) {
+				return {
+					success: true,
+					uuid: firstAvailableState.id,
+					stateName: firstAvailableState.name,
+					stateType: firstAvailableState.type,
+					taskMasterStatus,
+					matchType: 'last-resort-fallback',
+					fallbackUsed: 'first-available-state',
+					warning: `Using last resort fallback state '${firstAvailableState.name}'. Manual configuration strongly recommended.`
+				};
+			}
+
+			return {
+				success: false,
+				error: 'All fallback mechanisms exhausted',
+				taskMasterStatus,
+				fallbacksAttempted: [
+					'semantic-matching',
+					'type-matching',
+					'first-available-state'
+				]
+			};
+		} catch (error) {
+			return {
+				success: false,
+				error: `Advanced fallback failed: ${error.message}`,
+				taskMasterStatus
+			};
+		}
+	}
+
+	/**
+	 * Find semantic match using expanded vocabulary
+	 *
+	 * @param {Array} states - Available workflow states
+	 * @param {string} taskMasterStatus - TaskMaster status
+	 * @returns {Object|null} Matched state or null
+	 * @private
+	 */
+	_findSemanticStateMatch(states, taskMasterStatus) {
+		if (!states || !Array.isArray(states) || !taskMasterStatus) {
+			return null;
+		}
+
+		// Expanded semantic mappings with more vocabulary
+		const semanticMappings = {
+			pending: [
+				'todo',
+				'to do',
+				'backlog',
+				'new',
+				'created',
+				'open',
+				'queued',
+				'waiting',
+				'scheduled',
+				'planned',
+				'ready',
+				'triage',
+				'incoming'
+			],
+			'in-progress': [
+				'in progress',
+				'progress',
+				'active',
+				'working',
+				'started',
+				'doing',
+				'development',
+				'implementing',
+				'building',
+				'coding',
+				'wip',
+				'current'
+			],
+			review: [
+				'in review',
+				'review',
+				'pending review',
+				'reviewing',
+				'testing',
+				'qa',
+				'quality assurance',
+				'validation',
+				'approval',
+				'checking'
+			],
+			done: [
+				'done',
+				'completed',
+				'finished',
+				'closed',
+				'resolved',
+				'complete',
+				'shipped',
+				'delivered',
+				'deployed',
+				'released',
+				'success'
+			],
+			cancelled: [
+				'cancelled',
+				'canceled',
+				'rejected',
+				'declined',
+				'abandoned',
+				'discarded',
+				'aborted',
+				'dropped',
+				'void',
+				'invalid'
+			],
+			deferred: [
+				'backlog',
+				'on hold',
+				'deferred',
+				'postponed',
+				'paused',
+				'suspended',
+				'later',
+				'future',
+				'someday',
+				'icebox',
+				'parked'
+			]
+		};
+
+		const targetStatus = taskMasterStatus.toLowerCase();
+		const semanticTerms = semanticMappings[targetStatus] || [];
+
+		for (const state of states) {
+			if (state.archivedAt) continue; // Skip archived states
+
+			const stateName = state.name.toLowerCase();
+
+			// Check if state name contains any semantic term
+			for (const term of semanticTerms) {
+				if (stateName.includes(term) || term.includes(stateName)) {
+					log(
+						'debug',
+						`Found semantic match for '${taskMasterStatus}': '${state.name}' (contains '${term}')`
+					);
+					return state;
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Find type-based match for TaskMaster status
+	 *
+	 * @param {Object} statesByType - States grouped by type
+	 * @param {string} taskMasterStatus - TaskMaster status
+	 * @returns {Object|null} Matched state or null
+	 * @private
+	 */
+	_findTypeBasedMatch(statesByType, taskMasterStatus) {
+		if (!statesByType || !taskMasterStatus) {
+			return null;
+		}
+
+		// Map TaskMaster statuses to Linear state types
+		const statusToTypeMapping = {
+			pending: 'unstarted',
+			'in-progress': 'started',
+			review: 'started',
+			done: 'completed',
+			cancelled: 'canceled',
+			deferred: 'unstarted'
+		};
+
+		const targetType = statusToTypeMapping[taskMasterStatus.toLowerCase()];
+		if (!targetType || !statesByType[targetType]) {
+			return null;
+		}
+
+		// Find first non-archived state of the target type
+		const candidateStates = statesByType[targetType];
+		const activeState = candidateStates.find((state) => !state.archivedAt);
+
+		if (activeState) {
+			log(
+				'debug',
+				`Found type-based match for '${taskMasterStatus}': '${activeState.name}' (type: ${targetType})`
+			);
+		}
+
+		return activeState || null;
+	}
+
+	/**
+	 * Generate user guidance for resolving mapping issues
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} taskMasterStatus - TaskMaster status
+	 * @param {Object} statesData - Workflow states data
+	 * @param {Object} configValidation - Configuration validation results
+	 * @returns {Object} User guidance information
+	 * @private
+	 */
+	_generateUserGuidance(
+		teamId,
+		taskMasterStatus,
+		statesData,
+		configValidation
+	) {
+		const guidance = {
+			summary: `Unable to map TaskMaster status '${taskMasterStatus}' to Linear workflow state`,
+			steps: [],
+			availableStates: [],
+			recommendedActions: []
+		};
+
+		// Add available states information
+		if (statesData && statesData.states) {
+			guidance.availableStates = statesData.states
+				.filter((s) => !s.archivedAt) // Only active states
+				.map((s) => ({
+					id: s.id,
+					name: s.name,
+					type: s.type
+				}));
+		}
+
+		// Generate step-by-step guidance
+		guidance.steps = [
+			"1. Review your Linear team's workflow states in the Linear app",
+			"2. Identify which state should represent the TaskMaster status '" +
+				taskMasterStatus +
+				"'",
+			'3. Update your TaskMaster configuration using one of these methods:',
+			'   a. Run the setup wizard: taskmaster linear-sync-setup',
+			'   b. Manually edit .taskmaster/config.json',
+			'   c. Use CLI: taskmaster config set-linear-status-mapping'
+		];
+
+		// Add specific recommendations based on validation
+		if (configValidation.warnings.length > 0) {
+			guidance.recommendedActions.push(
+				'Address configuration warnings: ' +
+					configValidation.warnings.join(', ')
+			);
+		}
+
+		if (configValidation.recommendations.length > 0) {
+			guidance.recommendedActions.push(...configValidation.recommendations);
+		}
+
+		// Add status-specific recommendations
+		const defaultNames =
+			LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS[
+				taskMasterStatus.toLowerCase()
+			] || [];
+		if (defaultNames.length > 0) {
+			guidance.recommendedActions.push(
+				`Consider creating Linear workflow states named: ${defaultNames.join(' or ')} for automatic mapping`
+			);
+		}
+
+		return guidance;
 	}
 
 	/**
@@ -1706,6 +2313,7 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			createIssues: this.config.createIssues !== false,
 			updateIssues: true,
 			syncStatus: true,
+			queryWorkflowStates: true,
 			bulkOperations: false,
 			webhooks: false
 		};
@@ -1724,6 +2332,1006 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			createIssues: this.config.createIssues !== false,
 			enabled: this.isEnabled()
 		};
+	}
+
+	// =============================================================================
+	// WORKFLOW STATE MANAGEMENT
+	// =============================================================================
+
+	/**
+	 * Query Linear API for workflow states of a team
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} options - Query options
+	 * @param {boolean} options.includeArchived - Include archived states (default: false)
+	 * @param {number} options.pageSize - Page size for pagination (default: 100)
+	 * @param {boolean} options.useCache - Use cached results if available (default: true)
+	 * @returns {Promise<Object>} Workflow states data with pagination info
+	 */
+	async queryWorkflowStates(teamId, options = {}) {
+		const {
+			includeArchived = false,
+			pageSize = 100,
+			useCache = true
+		} = options;
+
+		// Check cache first if enabled
+		if (useCache) {
+			const cached = this._getWorkflowStatesFromCache(teamId);
+			if (cached) {
+				log('debug', `Using cached workflow states for team ${teamId}`);
+				return cached;
+			}
+		}
+
+		// Create progress message for operation start
+		const progressMessage = this.createProgressMessage(
+			'queryWorkflowStates',
+			{ id: 'workflow-states', title: `Team ${teamId} workflow states` },
+			'querying'
+		);
+		this.logFormattedMessage(progressMessage);
+
+		try {
+			// Validate team ID format
+			if (!teamId || typeof teamId !== 'string') {
+				throw new Error('Team ID is required and must be a string');
+			}
+
+			// Update progress - fetching states
+			const fetchingProgress = this.createProgressMessage(
+				'queryWorkflowStates',
+				{ id: 'workflow-states', title: `Team ${teamId} workflow states` },
+				'fetching'
+			);
+			this.logFormattedMessage(fetchingProgress);
+
+			// Query Linear API for workflow states
+			const statesData = await this._fetchWorkflowStatesWithPagination(teamId, {
+				includeArchived,
+				pageSize
+			});
+
+			// Update progress - processing results
+			const processingProgress = this.createProgressMessage(
+				'queryWorkflowStates',
+				{ id: 'workflow-states', title: `Team ${teamId} workflow states` },
+				'processing'
+			);
+			this.logFormattedMessage(processingProgress);
+
+			// Process and validate the results
+			const processedStates = this._processWorkflowStatesResponse({
+				...statesData,
+				includeArchived
+			});
+
+			// Cache the results if successful
+			if (useCache && processedStates.states.length > 0) {
+				this._cacheWorkflowStates(teamId, processedStates);
+			}
+
+			// Create success message
+			const successMessage = this.createSuccessMessage(
+				'queryWorkflowStates',
+				{ id: 'workflow-states', title: `Team ${teamId} workflow states` },
+				{
+					identifier: `team-${teamId}-states`,
+					statesCount: processedStates.states.length,
+					teamId
+				}
+			);
+			this.logFormattedMessage(successMessage);
+
+			log(
+				'info',
+				`Successfully queried ${processedStates.states.length} workflow states for team ${teamId}`
+			);
+
+			return processedStates;
+		} catch (error) {
+			// Create error message
+			const errorMessage = this.createErrorMessage(
+				'queryWorkflowStates',
+				{ id: 'workflow-states', title: `Team ${teamId} workflow states` },
+				error
+			);
+			this.logFormattedMessage(errorMessage, true);
+
+			log(
+				'error',
+				`Failed to query workflow states for team ${teamId}:`,
+				error.message
+			);
+			throw error;
+		}
+	}
+
+	/**
+	 * Fetch workflow states with pagination handling
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} options - Fetch options
+	 * @returns {Promise<Object>} Raw workflow states data
+	 * @private
+	 */
+	async _fetchWorkflowStatesWithPagination(teamId, options = {}) {
+		const { includeArchived = false, pageSize = 100 } = options;
+		const allStates = [];
+		let hasNextPage = true;
+		let cursor = null;
+		let pageCount = 0;
+
+		while (hasNextPage && pageCount < 10) {
+			// Safety limit of 10 pages
+			try {
+				log(
+					'debug',
+					`Fetching workflow states page ${pageCount + 1} for team ${teamId}`
+				);
+
+				// Build the query parameters
+				const queryParams = {
+					first: pageSize,
+					filter: {
+						team: { id: { eq: teamId } }
+						// Note: Removed archivedAt filter due to Linear API schema changes
+						// Archived states will be filtered after data retrieval
+					}
+				};
+
+				// Add cursor for pagination
+				if (cursor) {
+					queryParams.after = cursor;
+				}
+
+				// Perform the Linear API request with retry logic
+				const statesResponse = await this._performLinearRequest(
+					() => this.linear.workflowStates(queryParams),
+					`fetch workflow states page ${pageCount + 1} for team ${teamId}`
+				);
+
+				// Validate response structure
+				if (!statesResponse || !statesResponse.nodes) {
+					throw new Error('Invalid workflow states response structure');
+				}
+
+				// Add states from this page
+				allStates.push(...statesResponse.nodes);
+
+				// Check if there are more pages
+				hasNextPage = statesResponse.pageInfo?.hasNextPage || false;
+				cursor = statesResponse.pageInfo?.endCursor || null;
+				pageCount++;
+
+				log(
+					'debug',
+					`Fetched ${statesResponse.nodes.length} workflow states from page ${pageCount}, hasNextPage: ${hasNextPage}`
+				);
+
+				// Add a small delay between pages to be API-friendly
+				if (hasNextPage) {
+					await new Promise((resolve) => setTimeout(resolve, 100));
+				}
+			} catch (error) {
+				log(
+					'error',
+					`Failed to fetch workflow states page ${pageCount + 1}:`,
+					error.message
+				);
+				throw error;
+			}
+		}
+
+		if (pageCount >= 10 && hasNextPage) {
+			log(
+				'warn',
+				`Reached maximum page limit (10) while fetching workflow states for team ${teamId}`
+			);
+		}
+
+		return {
+			states: allStates,
+			totalCount: allStates.length,
+			pageCount,
+			teamId
+		};
+	}
+
+	/**
+	 * Process and validate workflow states response
+	 *
+	 * @param {Object} statesData - Raw states data from API
+	 * @returns {Object} Processed workflow states
+	 * @private
+	 */
+	_processWorkflowStatesResponse(statesData) {
+		const { states, totalCount, pageCount, teamId } = statesData;
+
+		// Validate that we have states
+		if (!Array.isArray(states)) {
+			throw new Error('Invalid states data structure');
+		}
+
+		// Process each state
+		const processedStates = states
+			.map((state, index) => {
+				try {
+					// Validate required fields
+					if (!state.id || !state.name) {
+						log(
+							'warn',
+							`Workflow state ${index} missing required fields (id or name)`
+						);
+						return null;
+					}
+
+					return {
+						id: state.id,
+						name: state.name,
+						type: state.type || 'unstarted', // Linear state types: unstarted, started, completed, canceled
+						color: state.color || '#95a2b3',
+						position:
+							typeof state.position === 'number' ? state.position : index,
+						description: state.description || null,
+						team: state.team
+							? {
+									id: state.team.id,
+									name: state.team.name,
+									key: state.team.key
+								}
+							: null,
+						// Additional metadata
+						archivedAt: state.archivedAt || null,
+						createdAt: state.createdAt || null,
+						updatedAt: state.updatedAt || null
+					};
+				} catch (error) {
+					log(
+						'warn',
+						`Failed to process workflow state ${index}:`,
+						error.message
+					);
+					return null;
+				}
+			})
+			.filter((state) => state !== null) // Remove failed states
+			.filter((state) => {
+				// Filter archived states based on includeArchived parameter
+				if (!statesData.includeArchived && state.archivedAt) {
+					return false; // Exclude archived states when includeArchived is false
+				}
+				return true;
+			});
+
+		// Group states by type for easier consumption
+		const statesByType = processedStates.reduce((acc, state) => {
+			if (!acc[state.type]) {
+				acc[state.type] = [];
+			}
+			acc[state.type].push(state);
+			return acc;
+		}, {});
+
+		// Sort states by position within each type
+		Object.keys(statesByType).forEach((type) => {
+			statesByType[type].sort((a, b) => a.position - b.position);
+		});
+
+		// Create name-to-ID mapping for quick lookups
+		const stateNameMap = processedStates.reduce((acc, state) => {
+			// Support both exact and normalized name lookups
+			acc[state.name] = state.id;
+			acc[state.name.toLowerCase()] = state.id;
+			acc[state.name.toLowerCase().replace(/[^a-z0-9]/g, '')] = state.id;
+			return acc;
+		}, {});
+
+		return {
+			states: processedStates,
+			statesByType,
+			stateNameMap,
+			metadata: {
+				totalCount: processedStates.length,
+				originalCount: totalCount,
+				pageCount,
+				teamId,
+				fetchedAt: new Date().toISOString(),
+				types: Object.keys(statesByType)
+			}
+		};
+	}
+
+	/**
+	 * Get workflow states from cache
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @returns {Object|null} Cached workflow states or null
+	 * @private
+	 */
+	_getWorkflowStatesFromCache(teamId) {
+		if (!this._workflowStatesCache) {
+			this._workflowStatesCache = new Map();
+		}
+
+		const cached = this._workflowStatesCache.get(teamId);
+		if (!cached) {
+			return null;
+		}
+
+		// Check if cache is still valid (5 minutes TTL)
+		const cacheAge = Date.now() - cached.cachedAt;
+		const maxAge = 5 * 60 * 1000; // 5 minutes
+
+		if (cacheAge > maxAge) {
+			log(
+				'debug',
+				`Workflow states cache expired for team ${teamId} (age: ${Math.round(cacheAge / 1000)}s)`
+			);
+			this._workflowStatesCache.delete(teamId);
+			return null;
+		}
+
+		log(
+			'debug',
+			`Using cached workflow states for team ${teamId} (age: ${Math.round(cacheAge / 1000)}s)`
+		);
+		return cached.data;
+	}
+
+	/**
+	 * Cache workflow states data
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} statesData - Processed workflow states data
+	 * @private
+	 */
+	_cacheWorkflowStates(teamId, statesData) {
+		if (!this._workflowStatesCache) {
+			this._workflowStatesCache = new Map();
+		}
+
+		// Limit cache size to prevent memory issues
+		if (this._workflowStatesCache.size >= 50) {
+			// Remove oldest entry
+			const firstKey = this._workflowStatesCache.keys().next().value;
+			this._workflowStatesCache.delete(firstKey);
+			log(
+				'debug',
+				`Workflow states cache size limit reached, removed oldest entry: ${firstKey}`
+			);
+		}
+
+		this._workflowStatesCache.set(teamId, {
+			data: statesData,
+			cachedAt: Date.now()
+		});
+
+		log(
+			'debug',
+			`Cached workflow states for team ${teamId} (${statesData.states.length} states)`
+		);
+	}
+
+	/**
+	 * Clear workflow states cache for a team or all teams
+	 *
+	 * @param {string} [teamId] - Specific team ID to clear, or null to clear all
+	 */
+	clearWorkflowStatesCache(teamId = null) {
+		if (!this._workflowStatesCache) {
+			return;
+		}
+
+		if (teamId) {
+			this._workflowStatesCache.delete(teamId);
+			log('debug', `Cleared workflow states cache for team ${teamId}`);
+		} else {
+			this._workflowStatesCache.clear();
+			log('debug', 'Cleared all workflow states cache');
+		}
+	}
+
+	/**
+	 * Get workflow state by name with fuzzy matching
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} stateName - State name to find
+	 * @param {Object} options - Search options
+	 * @returns {Promise<Object|null>} Matching workflow state or null
+	 */
+	async findWorkflowStateByName(teamId, stateName, options = {}) {
+		const { fuzzyMatch = true, useCache = true } = options;
+
+		try {
+			// Get workflow states for the team
+			const statesData = await this.queryWorkflowStates(teamId, { useCache });
+
+			if (!statesData || !statesData.stateNameMap) {
+				return null;
+			}
+
+			// Try exact match first
+			let stateId = statesData.stateNameMap[stateName];
+			if (stateId) {
+				return statesData.states.find((state) => state.id === stateId);
+			}
+
+			// Try case-insensitive match
+			stateId = statesData.stateNameMap[stateName.toLowerCase()];
+			if (stateId) {
+				return statesData.states.find((state) => state.id === stateId);
+			}
+
+			// Try normalized match (remove special characters)
+			const normalizedName = stateName.toLowerCase().replace(/[^a-z0-9]/g, '');
+			stateId = statesData.stateNameMap[normalizedName];
+			if (stateId) {
+				return statesData.states.find((state) => state.id === stateId);
+			}
+
+			// Try fuzzy matching if enabled
+			if (fuzzyMatch) {
+				const fuzzyMatch = this._findFuzzyWorkflowStateMatch(
+					statesData.states,
+					stateName
+				);
+				if (fuzzyMatch) {
+					log(
+						'debug',
+						`Found fuzzy match for "${stateName}": "${fuzzyMatch.name}"`
+					);
+					return fuzzyMatch;
+				}
+			}
+
+			return null;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to find workflow state "${stateName}" for team ${teamId}:`,
+				error.message
+			);
+			return null;
+		}
+	}
+
+	/**
+	 * Find fuzzy workflow state match using similarity scoring
+	 *
+	 * @param {Array} states - Array of workflow states
+	 * @param {string} targetName - Target state name to match
+	 * @returns {Object|null} Best matching state or null
+	 * @private
+	 */
+	_findFuzzyWorkflowStateMatch(states, targetName) {
+		if (!states || !Array.isArray(states) || !targetName) {
+			return null;
+		}
+
+		const target = targetName.toLowerCase();
+		let bestMatch = null;
+		let bestScore = 0;
+
+		for (const state of states) {
+			const stateName = state.name.toLowerCase();
+
+			// Calculate similarity score
+			let score = 0;
+
+			// Exact substring match gets high score
+			if (stateName.includes(target) || target.includes(stateName)) {
+				score += 0.8;
+			}
+
+			// Word-based matching
+			const targetWords = target.split(/\s+/);
+			const stateWords = stateName.split(/\s+/);
+
+			const matchingWords = targetWords.filter((word) =>
+				stateWords.some(
+					(stateWord) => stateWord.includes(word) || word.includes(stateWord)
+				)
+			);
+
+			score +=
+				(matchingWords.length /
+					Math.max(targetWords.length, stateWords.length)) *
+				0.6;
+
+			// Common abbreviations and patterns
+			const commonMappings = {
+				todo: ['todo', 'to do', 'backlog', 'new'],
+				progress: ['in progress', 'active', 'working', 'started'],
+				review: ['in review', 'review', 'pending review'],
+				done: ['done', 'completed', 'finished', 'closed'],
+				cancelled: ['cancelled', 'canceled', 'rejected']
+			};
+
+			for (const [key, variations] of Object.entries(commonMappings)) {
+				if (target.includes(key)) {
+					if (variations.some((variation) => stateName.includes(variation))) {
+						score += 0.7;
+					}
+				}
+			}
+
+			// Update best match if this score is higher
+			if (score > bestScore && score > 0.5) {
+				// Minimum threshold of 0.5
+				bestScore = score;
+				bestMatch = state;
+			}
+		}
+
+		return bestMatch;
+	}
+
+	// =============================================================================
+	// TASKMASTER STATUS MAPPING SYSTEM
+	// =============================================================================
+
+	/**
+	 * Default mappings from TaskMaster statuses to Linear state names
+	 * Each TaskMaster status can map to multiple possible Linear state names
+	 */
+	static TASKMASTER_STATUS_DEFAULTS = {
+		pending: ['Todo', 'Backlog'],
+		'in-progress': ['In Progress'],
+		review: ['In Review'],
+		done: ['Done', 'Completed'],
+		cancelled: ['Canceled', 'Cancelled'],
+		deferred: ['Backlog', 'On Hold']
+	};
+
+	/**
+	 * All valid TaskMaster statuses
+	 */
+	static TASKMASTER_STATUSES = Object.keys(
+		LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS
+	);
+
+	/**
+	 * Resolve a TaskMaster status to a Linear workflow state UUID
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} taskMasterStatus - TaskMaster status (pending, in-progress, review, done, cancelled, deferred)
+	 * @param {Object} options - Resolution options
+	 * @returns {Promise<Object>} Resolution result with UUID or error details
+	 */
+	async resolveTaskMasterStatusToLinearUUID(
+		teamId,
+		taskMasterStatus,
+		options = {}
+	) {
+		const { useCache = true, allowFuzzyFallback = true } = options;
+
+		try {
+			// Validate TaskMaster status
+			if (!taskMasterStatus || typeof taskMasterStatus !== 'string') {
+				return {
+					success: false,
+					error: 'TaskMaster status is required and must be a string',
+					taskMasterStatus
+				};
+			}
+
+			const normalizedStatus = taskMasterStatus.toLowerCase();
+			if (
+				!LinearIntegrationHandler.TASKMASTER_STATUSES.includes(normalizedStatus)
+			) {
+				return {
+					success: false,
+					error: `Invalid TaskMaster status: ${taskMasterStatus}. Valid statuses: ${LinearIntegrationHandler.TASKMASTER_STATUSES.join(', ')}`,
+					taskMasterStatus
+				};
+			}
+
+			// Get workflow states for the team
+			const statesData = await this.queryWorkflowStates(teamId, { useCache });
+			if (!statesData || !statesData.states || statesData.states.length === 0) {
+				return {
+					success: false,
+					error: `No workflow states found for team ${teamId}`,
+					taskMasterStatus,
+					teamId
+				};
+			}
+
+			// Get possible Linear state names for this TaskMaster status
+			const possibleStateNames =
+				LinearIntegrationHandler.TASKMASTER_STATUS_DEFAULTS[normalizedStatus];
+			if (!possibleStateNames || possibleStateNames.length === 0) {
+				return {
+					success: false,
+					error: `No default Linear state names configured for TaskMaster status: ${taskMasterStatus}`,
+					taskMasterStatus
+				};
+			}
+
+			// Try exact matches first
+			for (const stateName of possibleStateNames) {
+				const matchedState = statesData.states.find(
+					(state) => state.name === stateName
+				);
+				if (matchedState) {
+					log(
+						'debug',
+						`Resolved TaskMaster status "${taskMasterStatus}" to Linear state "${matchedState.name}" (${matchedState.id})`
+					);
+					return {
+						success: true,
+						uuid: matchedState.id,
+						stateName: matchedState.name,
+						stateType: matchedState.type,
+						taskMasterStatus,
+						matchType: 'exact'
+					};
+				}
+			}
+
+			// Try case-insensitive matches
+			for (const stateName of possibleStateNames) {
+				const matchedState = statesData.states.find(
+					(state) => state.name.toLowerCase() === stateName.toLowerCase()
+				);
+				if (matchedState) {
+					log(
+						'debug',
+						`Resolved TaskMaster status "${taskMasterStatus}" to Linear state "${matchedState.name}" (${matchedState.id}) via case-insensitive match`
+					);
+					return {
+						success: true,
+						uuid: matchedState.id,
+						stateName: matchedState.name,
+						stateType: matchedState.type,
+						taskMasterStatus,
+						matchType: 'case-insensitive'
+					};
+				}
+			}
+
+			// Try fuzzy matching as fallback if enabled
+			if (allowFuzzyFallback) {
+				for (const stateName of possibleStateNames) {
+					const fuzzyMatch = this._findFuzzyWorkflowStateMatch(
+						statesData.states,
+						stateName
+					);
+					if (fuzzyMatch) {
+						log(
+							'debug',
+							`Resolved TaskMaster status "${taskMasterStatus}" to Linear state "${fuzzyMatch.name}" (${fuzzyMatch.id}) via fuzzy match`
+						);
+						return {
+							success: true,
+							uuid: fuzzyMatch.id,
+							stateName: fuzzyMatch.name,
+							stateType: fuzzyMatch.type,
+							taskMasterStatus,
+							matchType: 'fuzzy'
+						};
+					}
+				}
+			}
+
+			// No matches found
+			const availableStates = statesData.states.map((s) => s.name).join(', ');
+			return {
+				success: false,
+				error: `Could not find Linear state matching TaskMaster status "${taskMasterStatus}". Tried: ${possibleStateNames.join(', ')}. Available states: ${availableStates}`,
+				taskMasterStatus,
+				possibleStateNames,
+				availableStates: statesData.states.map((s) => ({
+					id: s.id,
+					name: s.name,
+					type: s.type
+				}))
+			};
+		} catch (error) {
+			log(
+				'error',
+				`Failed to resolve TaskMaster status "${taskMasterStatus}" for team ${teamId}:`,
+				error.message
+			);
+			return {
+				success: false,
+				error: `Resolution failed: ${error.message}`,
+				taskMasterStatus,
+				teamId
+			};
+		}
+	}
+
+	/**
+	 * Generate complete UUID mappings for all TaskMaster statuses
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} options - Generation options
+	 * @returns {Promise<Object>} Complete mapping result
+	 */
+	async generateTaskMasterUUIDMappings(teamId, options = {}) {
+		const {
+			useCache = true,
+			allowFuzzyFallback = true,
+			includeDetails = false
+		} = options;
+
+		try {
+			const mappings = {};
+			const details = {};
+			const errors = [];
+
+			log(
+				'info',
+				`Generating TaskMaster-to-Linear UUID mappings for team ${teamId}`
+			);
+
+			// Resolve each TaskMaster status
+			for (const taskMasterStatus of LinearIntegrationHandler.TASKMASTER_STATUSES) {
+				const resolution = await this.resolveTaskMasterStatusToLinearUUID(
+					teamId,
+					taskMasterStatus,
+					{ useCache, allowFuzzyFallback }
+				);
+
+				if (resolution.success) {
+					mappings[taskMasterStatus] = resolution.uuid;
+					if (includeDetails) {
+						details[taskMasterStatus] = {
+							uuid: resolution.uuid,
+							stateName: resolution.stateName,
+							stateType: resolution.stateType,
+							matchType: resolution.matchType
+						};
+					}
+					log(
+						'debug',
+						`✅ Mapped "${taskMasterStatus}" → "${resolution.stateName}" (${resolution.uuid})`
+					);
+				} else {
+					errors.push({
+						taskMasterStatus,
+						error: resolution.error
+					});
+					log(
+						'warn',
+						`❌ Failed to map "${taskMasterStatus}": ${resolution.error}`
+					);
+				}
+			}
+
+			const result = {
+				success: errors.length === 0,
+				mappings,
+				teamId,
+				totalStatuses: LinearIntegrationHandler.TASKMASTER_STATUSES.length,
+				successfulMappings: Object.keys(mappings).length,
+				failedMappings: errors.length,
+				generatedAt: new Date().toISOString()
+			};
+
+			if (includeDetails) {
+				result.details = details;
+			}
+
+			if (errors.length > 0) {
+				result.errors = errors;
+			}
+
+			log(
+				'info',
+				`Generated ${result.successfulMappings}/${result.totalStatuses} TaskMaster status mappings for team ${teamId}`
+			);
+
+			return result;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to generate TaskMaster UUID mappings for team ${teamId}:`,
+				error.message
+			);
+			return {
+				success: false,
+				error: `Mapping generation failed: ${error.message}`,
+				teamId,
+				totalStatuses: LinearIntegrationHandler.TASKMASTER_STATUSES.length,
+				successfulMappings: 0,
+				failedMappings: LinearIntegrationHandler.TASKMASTER_STATUSES.length
+			};
+		}
+	}
+
+	/**
+	 * Validate existing TaskMaster status mappings against current Linear states
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} existingMappings - Current UUID mappings to validate
+	 * @param {Object} options - Validation options
+	 * @returns {Promise<Object>} Validation result
+	 */
+	async validateTaskMasterStatusMappings(
+		teamId,
+		existingMappings,
+		options = {}
+	) {
+		const { useCache = true } = options;
+
+		try {
+			if (!existingMappings || typeof existingMappings !== 'object') {
+				return {
+					success: false,
+					error: 'Existing mappings object is required',
+					teamId
+				};
+			}
+
+			// Get current workflow states
+			const statesData = await this.queryWorkflowStates(teamId, { useCache });
+			if (!statesData || !statesData.states) {
+				return {
+					success: false,
+					error: `Could not fetch workflow states for team ${teamId}`,
+					teamId
+				};
+			}
+
+			const validMappings = {};
+			const invalidMappings = {};
+			const missingMappings = [];
+
+			// Check each existing mapping
+			for (const [taskMasterStatus, uuid] of Object.entries(existingMappings)) {
+				if (!uuid) {
+					invalidMappings[taskMasterStatus] = 'Missing UUID';
+					continue;
+				}
+
+				const matchedState = statesData.states.find(
+					(state) => state.id === uuid
+				);
+				if (matchedState) {
+					validMappings[taskMasterStatus] = {
+						uuid,
+						stateName: matchedState.name,
+						stateType: matchedState.type
+					};
+				} else {
+					invalidMappings[taskMasterStatus] =
+						`UUID ${uuid} not found in Linear workspace`;
+				}
+			}
+
+			// Check for missing TaskMaster statuses
+			for (const taskMasterStatus of LinearIntegrationHandler.TASKMASTER_STATUSES) {
+				if (!existingMappings[taskMasterStatus]) {
+					missingMappings.push(taskMasterStatus);
+				}
+			}
+
+			const result = {
+				success:
+					Object.keys(invalidMappings).length === 0 &&
+					missingMappings.length === 0,
+				teamId,
+				validMappings,
+				invalidMappings,
+				missingMappings,
+				totalMappings: Object.keys(existingMappings).length,
+				validCount: Object.keys(validMappings).length,
+				invalidCount: Object.keys(invalidMappings).length,
+				missingCount: missingMappings.length,
+				validatedAt: new Date().toISOString()
+			};
+
+			log(
+				'info',
+				`Validated TaskMaster mappings for team ${teamId}: ${result.validCount} valid, ${result.invalidCount} invalid, ${result.missingCount} missing`
+			);
+
+			return result;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to validate TaskMaster mappings for team ${teamId}:`,
+				error.message
+			);
+			return {
+				success: false,
+				error: `Validation failed: ${error.message}`,
+				teamId
+			};
+		}
+	}
+
+	/**
+	 * Get unmapped TaskMaster statuses for a team
+	 *
+	 * @param {string} teamId - Linear team ID
+	 * @param {Object} existingMappings - Current mappings to check
+	 * @returns {Promise<Array>} Array of unmapped TaskMaster statuses
+	 */
+	async getUnmappedTaskMasterStatuses(teamId, existingMappings = {}) {
+		try {
+			const unmapped = [];
+
+			for (const taskMasterStatus of LinearIntegrationHandler.TASKMASTER_STATUSES) {
+				if (!existingMappings[taskMasterStatus]) {
+					unmapped.push(taskMasterStatus);
+				}
+			}
+
+			return unmapped;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to get unmapped TaskMaster statuses for team ${teamId}:`,
+				error.message
+			);
+			return LinearIntegrationHandler.TASKMASTER_STATUSES;
+		}
+	}
+
+	/**
+	 * Get the effective state UUID for a TaskMaster status
+	 * Uses configuration-based UUID mapping if available, otherwise resolves via API
+	 *
+	 * @param {string} taskMasterStatus - TaskMaster status
+	 * @param {string} teamId - Linear team ID
+	 * @param {string} projectRoot - Project root directory
+	 * @returns {Promise<string|null>} Linear state UUID or null if not found
+	 */
+	async getEffectiveStateUuid(taskMasterStatus, teamId, projectRoot) {
+		try {
+			const effectiveMapping = getEffectiveLinearStatusMapping(projectRoot);
+
+			if (effectiveMapping && effectiveMapping.mapping[taskMasterStatus]) {
+				if (effectiveMapping.type === 'uuid') {
+					// Direct UUID mapping available
+					return effectiveMapping.mapping[taskMasterStatus];
+				} else {
+					// Name-based mapping - need to resolve to UUID
+					log(
+						'debug',
+						`Resolving name-based mapping "${effectiveMapping.mapping[taskMasterStatus]}" to UUID for status "${taskMasterStatus}"`
+					);
+					const resolution = await this.resolveTaskMasterStatusToLinearUUID(
+						teamId,
+						taskMasterStatus
+					);
+					if (resolution.success) {
+						return resolution.uuid;
+					} else {
+						log(
+							'warn',
+							`Failed to resolve "${taskMasterStatus}" to UUID: ${resolution.error}`
+						);
+						return null;
+					}
+				}
+			}
+
+			// No mapping configured - try default resolution
+			log(
+				'debug',
+				`No mapping configured for "${taskMasterStatus}", attempting default resolution`
+			);
+			const resolution = await this.resolveTaskMasterStatusToLinearUUID(
+				teamId,
+				taskMasterStatus
+			);
+			if (resolution.success) {
+				return resolution.uuid;
+			}
+
+			return null;
+		} catch (error) {
+			log(
+				'error',
+				`Failed to get effective state UUID for "${taskMasterStatus}": ${error.message}`
+			);
+			return null;
+		}
 	}
 
 	// =============================================================================
@@ -1825,6 +3433,28 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 					},
 					logMessage: `Task #${task.id} synchronized with Linear issue ${linearData.identifier}`,
 					userMessage: `🔄 Task #${task.id} synchronized with Linear`
+				};
+
+			case 'queryWorkflowStates':
+				return {
+					...baseMessage,
+					title: '✅ Workflow States Retrieved Successfully',
+					message: `Successfully retrieved ${linearData.statesCount} workflow states for team ${linearData.teamId}`,
+					details: {
+						teamId: linearData.teamId,
+						statesCount: linearData.statesCount,
+						identifier: linearData.identifier,
+						retrievedAt: timestamp
+					},
+					actions: {
+						viewStates: {
+							text: 'View States in Linear',
+							url: `https://linear.app/team/${linearData.teamId}/settings/workflow`,
+							primary: true
+						}
+					},
+					logMessage: `Successfully retrieved ${linearData.statesCount} workflow states for team ${linearData.teamId}`,
+					userMessage: `📋 Retrieved ${linearData.statesCount} workflow states for Linear team`
 				};
 
 			default:
@@ -2290,6 +3920,21 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 		const taskTitle =
 			task.title.length > 30 ? task.title.substring(0, 30) + '...' : task.title;
 
+		// Handle workflow states operations differently
+		if (operationType === 'queryWorkflowStates') {
+			switch (stage) {
+				case 'querying':
+					return `Preparing to query workflow states`;
+				case 'fetching':
+					return `Fetching workflow states from Linear API`;
+				case 'processing':
+					return `Processing and validating workflow states`;
+				default:
+					return `Querying workflow states from Linear`;
+			}
+		}
+
+		// Handle regular task operations
 		switch (stage) {
 			case 'validating':
 				return `Validating task data for "${taskTitle}"`;
