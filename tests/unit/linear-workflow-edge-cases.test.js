@@ -86,7 +86,8 @@ describe('Linear Workflow Edge Cases', () => {
 
 			const result = await handler.handleWorkflowEdgeCases(
 				mockTeamId,
-				mockTaskMasterStatus
+				mockTaskMasterStatus,
+				{ includeArchived: true } // Include archived states for testing
 			);
 
 			expect(

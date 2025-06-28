@@ -2,7 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
 import { fileURLToPath } from 'url';
-import { log, findProjectRoot, resolveEnvVariable } from './utils.js';
+import {
+	log,
+	findProjectRoot,
+	resolveEnvVariable,
+	readJSON,
+	writeJSON
+} from './utils.js';
 import { LEGACY_CONFIG_FILE } from '../../src/constants/paths.js';
 import { findConfigPath } from '../../src/utils/path-utils.js';
 
@@ -844,16 +850,27 @@ function getBaseUrlForRole(role, explicitRoot = null) {
 // --- Linear Integration Configuration Getters ---
 
 /**
- * Gets the Linear integration configuration
+ * Gets the Linear integration configuration from linear-config.json
  * @param {string|null} explicitRoot - Optional explicit path to the project root
  * @returns {object} The Linear configuration object
  */
 function getLinearConfig(explicitRoot = null) {
-	const config = getConfig(explicitRoot);
-	return {
-		...DEFAULTS.integrations.linear,
-		...(config?.integrations?.linear || {})
-	};
+	const projectRoot = explicitRoot || findProjectRoot();
+	const linearConfigPath = path.join(
+		projectRoot,
+		'.taskmaster',
+		'linear-config.json'
+	);
+
+	try {
+		if (fs.existsSync(linearConfigPath)) {
+			return readJSON(linearConfigPath);
+		}
+	} catch (error) {
+		log('warn', `Failed to read Linear config: ${error.message}`);
+	}
+
+	return { team: { id: null }, project: { id: null }, mappings: {} };
 }
 
 /**
@@ -862,30 +879,32 @@ function getLinearConfig(explicitRoot = null) {
  * @returns {string|null} The resolved Linear API key
  */
 function getLinearApiKey(explicitRoot = null) {
-	const linearConfig = getLinearConfig(explicitRoot);
-	const apiKeyValue = linearConfig.apiKey;
-
-	// Resolve environment variable if placeholder format is used
-	if (
-		typeof apiKeyValue === 'string' &&
-		apiKeyValue.startsWith('${') &&
-		apiKeyValue.endsWith('}')
-	) {
-		const envVarName = apiKeyValue.slice(2, -1); // Remove ${ and }
-		return resolveEnvVariable(envVarName, null, explicitRoot);
-	}
-
-	return apiKeyValue;
+	// Read API key directly from environment variables
+	return (
+		process.env.LINEAR_API_KEY || process.env.TASKMASTER_LINEAR_API_KEY || null
+	);
 }
 
 /**
- * Gets the Linear team configuration
+ * Gets the Linear team configuration with environment variable resolution
  * @param {string|null} explicitRoot - Optional explicit path to the project root
  * @returns {object} The team configuration object
  */
 function getLinearTeam(explicitRoot = null) {
 	const linearConfig = getLinearConfig(explicitRoot);
-	return linearConfig.team || { id: null, name: null };
+	const team = linearConfig.team || { id: null, name: null };
+
+	// Resolve environment variable for team ID if placeholder format is used
+	if (
+		typeof team.id === 'string' &&
+		team.id.startsWith('${') &&
+		team.id.endsWith('}')
+	) {
+		const envVarName = team.id.slice(2, -1); // Remove ${ and }
+		team.id = process.env[envVarName] || null;
+	}
+
+	return team;
 }
 
 /**
@@ -898,13 +917,25 @@ function getLinearTeamId(explicitRoot = null) {
 }
 
 /**
- * Gets the Linear project configuration
+ * Gets the Linear project configuration with environment variable resolution
  * @param {string|null} explicitRoot - Optional explicit path to the project root
  * @returns {object} The project configuration object
  */
 function getLinearProject(explicitRoot = null) {
 	const linearConfig = getLinearConfig(explicitRoot);
-	return linearConfig.project || { id: null, name: null };
+	const project = linearConfig.project || { id: null, name: null };
+
+	// Resolve environment variable for project ID if placeholder format is used
+	if (
+		typeof project.id === 'string' &&
+		project.id.startsWith('${') &&
+		project.id.endsWith('}')
+	) {
+		const envVarName = project.id.slice(2, -1); // Remove ${ and }
+		project.id = process.env[envVarName] || null;
+	}
+
+	return project;
 }
 
 /**
@@ -989,10 +1020,7 @@ function getLinearSyncSettings(explicitRoot = null) {
  */
 function getLinearStatusUuidMapping(explicitRoot = null) {
 	const linearConfig = getLinearConfig(explicitRoot);
-	return (
-		linearConfig.labels?.statusUuidMapping ||
-		DEFAULTS.integrations.linear.labels.statusUuidMapping
-	);
+	return linearConfig.mappings?.statusUuid || {};
 }
 
 /**
@@ -1004,18 +1032,20 @@ function getLinearStatusUuidMapping(explicitRoot = null) {
 function setLinearStatusUuidMapping(uuidMapping, explicitRoot = null) {
 	try {
 		const projectRoot = explicitRoot || findProjectRoot();
-		const configPath = path.join(projectRoot, CONFIG_PATHS.main);
+		const configPath = path.join(
+			projectRoot,
+			'.taskmaster',
+			'linear-config.json'
+		);
 
-		const config = loadConfig(projectRoot);
+		// Read existing Linear config
+		const config = fs.existsSync(configPath) ? readJSON(configPath) : {};
 
 		// Ensure the structure exists
-		if (!config.integrations) config.integrations = {};
-		if (!config.integrations.linear) config.integrations.linear = {};
-		if (!config.integrations.linear.labels)
-			config.integrations.linear.labels = {};
+		if (!config.mappings) config.mappings = {};
 
 		// Set the UUID mapping
-		config.integrations.linear.labels.statusUuidMapping = uuidMapping;
+		config.mappings.statusUuid = uuidMapping;
 
 		// Write the updated config
 		writeJSON(configPath, config, 2);

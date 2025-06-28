@@ -2,11 +2,11 @@
 	"version": "1.0.0",
 	"enabled": true,
 	"team": {
-		"id": "0c581c9a-750a-4bfe-bec3-c7021606c674",
+		"id": "${LINEAR_TEAM_ID}",
 		"name": "BurningTorch"
 	},
 	"project": {
-		"id": "5472897f-b3c7-468c-9de0-5587f7478fd8",
+		"id": "${LINEAR_PROJECT_ID}",
 		"name": "Claude Task Master Linear"
 	},
 	"labels": {
@@ -135,6 +135,14 @@
 			"done": "Done",
 			"cancelled": "Cancelled",
 			"deferred": "Backlog"
+		},
+		"statusUuid": {
+			"pending": "5c207c77-284f-4c03-8180-0b2acedeef90",
+			"in-progress": "001ac648-db8a-45a1-b905-cb3ee6860570",
+			"review": "32fc85a6-c3a3-4a7d-afaa-6bb796312426",
+			"done": "2141c545-b53d-416a-a8eb-46909dbf0eac",
+			"cancelled": "cc5f3df1-3ba1-45a8-b4a6-d417eb7aabdf",
+			"deferred": "faa2a995-b8fa-4d19-a128-4314476db0b4"
 		}
 	},
 	"webhooks": {

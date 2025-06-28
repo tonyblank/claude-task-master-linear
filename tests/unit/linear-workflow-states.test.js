@@ -135,8 +135,9 @@ describe('LinearIntegrationHandler - Workflow States', () => {
 			expect(mockLinear.workflowStates).toHaveBeenCalledWith({
 				first: 100,
 				filter: {
-					team: { id: { eq: mockTeamId } },
-					archivedAt: { null: true }
+					team: { id: { eq: mockTeamId } }
+					// Note: archivedAt filter removed due to Linear API schema changes
+					// Archived states are now filtered after data retrieval
 				}
 			});
 
@@ -221,16 +222,14 @@ describe('LinearIntegrationHandler - Workflow States', () => {
 			expect(mockLinear.workflowStates).toHaveBeenNthCalledWith(1, {
 				first: 1,
 				filter: {
-					team: { id: { eq: mockTeamId } },
-					archivedAt: { null: true }
+					team: { id: { eq: mockTeamId } }
 				}
 			});
 			expect(mockLinear.workflowStates).toHaveBeenNthCalledWith(2, {
 				first: 1,
 				after: 'cursor-1',
 				filter: {
-					team: { id: { eq: mockTeamId } },
-					archivedAt: { null: true }
+					team: { id: { eq: mockTeamId } }
 				}
 			});
 

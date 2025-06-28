@@ -42,6 +42,36 @@ export async function createLinearConfiguration(wizardData, options = {}) {
 		config.project.id = wizardData.project.id;
 		config.project.name = wizardData.project.name;
 
+		// Update state mappings if provided
+		if (wizardData.stateMappings) {
+			// Update name-based mappings (keeping existing for backward compatibility)
+			if (wizardData.stateMappings.name) {
+				config.mappings.status = {
+					...config.mappings.status,
+					...wizardData.stateMappings.name
+				};
+			}
+
+			// Add UUID-based mappings (preferred for reliability)
+			if (wizardData.stateMappings.uuid) {
+				config.mappings.statusUuid = wizardData.stateMappings.uuid;
+			}
+
+			// Store workflow states metadata for future reference
+			if (wizardData.workflowStates) {
+				config.metadata.workflowStates = {
+					lastFetched: new Date().toISOString(),
+					count: wizardData.workflowStates.length,
+					states: wizardData.workflowStates.map((state) => ({
+						id: state.id,
+						name: state.name,
+						type: state.type,
+						color: state.color
+					}))
+				};
+			}
+		}
+
 		// Update metadata
 		config.metadata.createdAt = new Date().toISOString();
 		config.metadata.lastUpdated = new Date().toISOString();

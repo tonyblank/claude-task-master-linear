@@ -366,7 +366,7 @@
         "id": 6,
         "title": "Implement Linear Workflow State Mapping",
         "description": "Fetch Linear team's workflow states and create mapping between Taskmaster statuses and Linear state IDs (UUIDs)",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           1,
           5
@@ -457,14 +457,14 @@
               8
             ],
             "details": "Enhance the existing linear-sync-setup command (the setup wizard) to include workflow state mapping configuration. The setup wizard should be the primary way users configure state mappings initially and also serve as the recommended recovery method if configurations become corrupted. Provide UI for reviewing and customizing state mappings during the setup flow. Include validation and testing options within the wizard to ensure proper mapping configuration before completion.",
-            "status": "in-progress"
+            "status": "done"
           },
           {
             "id": 10,
             "title": "Create command-line utilities for manual state mapping operations",
             "description": "Implement CLI commands for manually refreshing, validating, and debugging state mappings",
             "details": "Create command-line utilities that allow users to manually manage and troubleshoot state name mappings with Linear. Commands should include:\n\n1. 'linear-refresh-mappings': Regenerate UUID mappings from current configuration state names\n2. 'linear-validate-mappings': Check if configured state names exist in Linear\n3. 'linear-debug-mappings': Display current mappings and their status\n\nThese utilities should be simple and focused on the direct mapping functionality, providing clear feedback on mapping operations and errors. They serve as manual alternatives when automatic mapping needs verification or troubleshooting.",
-            "status": "pending",
+            "status": "done",
             "dependencies": [
               "6.7",
               "6.8"
@@ -2328,7 +2328,7 @@
     ],
     "metadata": {
       "created": "2025-06-18T20:32:19.621Z",
-      "updated": "2025-06-28T14:28:14.960Z",
+      "updated": "2025-06-28T21:32:56.346Z",
       "description": "Tasks for master context"
     }
   }

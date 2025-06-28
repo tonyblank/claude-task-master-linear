@@ -317,13 +317,13 @@ describe('Setup Success Module', () => {
 
 			expect(result.success).toBe(true);
 			expect(result.errors).toHaveLength(0);
-			expect(result.tests).toHaveLength(4); // API, Team Access, Project Access, Config File
+			expect(result.tests).toHaveLength(5); // API, Team Access, Project Access, Config File, State Mappings
 
-			// Verify all tests passed
+			// Verify most tests passed (state mappings might be warning)
 			const passedTests = result.tests.filter(
 				(test) => test.status === 'passed'
 			);
-			expect(passedTests).toHaveLength(4);
+			expect(passedTests).toHaveLength(4); // State mappings test shows as warning, not passed
 		});
 
 		it('should handle API connectivity failure', async () => {

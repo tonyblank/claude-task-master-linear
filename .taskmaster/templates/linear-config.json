@@ -135,7 +135,8 @@
 			"done": "Done",
 			"cancelled": "Cancelled",
 			"deferred": "Backlog"
-		}
+		},
+		"statusUuid": {}
 	},
 	"webhooks": {
 		"enabled": false,
@@ -146,6 +147,11 @@
 		"createdAt": null,
 		"createdBy": "taskmaster-linear-wizard",
 		"lastUpdated": null,
-		"lastSync": null
+		"lastSync": null,
+		"workflowStates": {
+			"lastFetched": null,
+			"count": 0,
+			"states": []
+		}
 	}
 }

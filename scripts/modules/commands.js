@@ -113,6 +113,9 @@ import { syncTasksToReadme } from './sync-readme.js';
 import { linearSyncSetupCommand } from '../commands/linear-sync-setup.js';
 import { linearSyncLabelsCommand } from '../commands/linear-sync-labels.js';
 import { linearSyncAllCommand } from '../commands/linear-sync-all.js';
+import { linearRefreshMappingsCommand } from '../commands/linear-refresh-mappings.js';
+import { linearValidateMappingsCommand } from '../commands/linear-validate-mappings.js';
+import { linearDebugMappingsCommand } from '../commands/linear-debug-mappings.js';
 
 /**
  * Runs the interactive setup process for model configuration.
@@ -4183,6 +4186,97 @@ Examples:
 				await linearSyncAllCommand(options);
 			} catch (error) {
 				console.error(chalk.red(`Comprehensive sync failed: ${error.message}`));
+				if (process.env.DEBUG === '1') {
+					console.error(error);
+				}
+				process.exit(1);
+			}
+		})
+		.on('error', function (err) {
+			console.error(chalk.red(`Error: ${err.message}`));
+			process.exit(1);
+		});
+
+	// linear-refresh-mappings command
+	// Following integration command naming pattern: {integration}-{command-name}
+	programInstance
+		.command('linear-refresh-mappings')
+		.description(
+			'Regenerate Linear UUID mappings from current state name configuration'
+		)
+		.option('--force', 'Force refresh even if UUID mappings already exist')
+		.option('--no-validate', 'Skip validation after refresh')
+		.option('--dry-run', 'Show what would be done without making changes')
+		.option(
+			'--project-root <path>',
+			'Project root directory (defaults to current directory)'
+		)
+		.action(async (options) => {
+			try {
+				await linearRefreshMappingsCommand(options);
+			} catch (error) {
+				console.error(chalk.red(`Mapping refresh failed: ${error.message}`));
+				if (process.env.DEBUG === '1') {
+					console.error(error);
+				}
+				process.exit(1);
+			}
+		})
+		.on('error', function (err) {
+			console.error(chalk.red(`Error: ${err.message}`));
+			process.exit(1);
+		});
+
+	// linear-validate-mappings command
+	// Following integration command naming pattern: {integration}-{command-name}
+	programInstance
+		.command('linear-validate-mappings')
+		.description(
+			'Validate Linear state mappings against workspace configuration'
+		)
+		.option('--no-workspace', 'Skip validation against Linear workspace')
+		.option('--detailed', 'Show detailed analysis and recommendations')
+		.option('--quiet', 'Only show errors and warnings')
+		.option(
+			'--project-root <path>',
+			'Project root directory (defaults to current directory)'
+		)
+		.action(async (options) => {
+			try {
+				await linearValidateMappingsCommand(options);
+			} catch (error) {
+				console.error(chalk.red(`Mapping validation failed: ${error.message}`));
+				if (process.env.DEBUG === '1') {
+					console.error(error);
+				}
+				process.exit(1);
+			}
+		})
+		.on('error', function (err) {
+			console.error(chalk.red(`Error: ${err.message}`));
+			process.exit(1);
+		});
+
+	// linear-debug-mappings command
+	// Following integration command naming pattern: {integration}-{command-name}
+	programInstance
+		.command('linear-debug-mappings')
+		.description(
+			'Display debug information about Linear state mappings and configuration'
+		)
+		.option('--verbose', 'Show detailed debug information')
+		.option('--config', 'Include raw configuration data in output')
+		.option('--json', 'Output debug information in JSON format')
+		.option('--check-needs', 'Check if mapping refresh is needed')
+		.option(
+			'--project-root <path>',
+			'Project root directory (defaults to current directory)'
+		)
+		.action(async (options) => {
+			try {
+				await linearDebugMappingsCommand(options);
+			} catch (error) {
+				console.error(chalk.red(`Debug command failed: ${error.message}`));
 				if (process.env.DEBUG === '1') {
 					console.error(error);
 				}

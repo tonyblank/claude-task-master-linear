@@ -2401,7 +2401,10 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 			this.logFormattedMessage(processingProgress);
 
 			// Process and validate the results
-			const processedStates = this._processWorkflowStatesResponse(statesData);
+			const processedStates = this._processWorkflowStatesResponse({
+				...statesData,
+				includeArchived
+			});
 
 			// Cache the results if successful
 			if (useCache && processedStates.states.length > 0) {
@@ -2471,8 +2474,9 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 				const queryParams = {
 					first: pageSize,
 					filter: {
-						team: { id: { eq: teamId } },
-						...(includeArchived ? {} : { archivedAt: { null: true } })
+						team: { id: { eq: teamId } }
+						// Note: Removed archivedAt filter due to Linear API schema changes
+						// Archived states will be filtered after data retrieval
 					}
 				};
 
@@ -2591,7 +2595,14 @@ export class LinearIntegrationHandler extends BaseIntegrationHandler {
 					return null;
 				}
 			})
-			.filter((state) => state !== null); // Remove failed states
+			.filter((state) => state !== null) // Remove failed states
+			.filter((state) => {
+				// Filter archived states based on includeArchived parameter
+				if (!statesData.includeArchived && state.archivedAt) {
+					return false; // Exclude archived states when includeArchived is false
+				}
+				return true;
+			});
 
 		// Group states by type for easier consumption
 		const statesByType = processedStates.reduce((acc, state) => {
